@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
+    "doctor": "react-native doctor",
     "android": "react-native run-android",
     "ios": "react-native run-ios",
     "lint": "eslint .",
@@ -10,8 +11,20 @@
     "test": "jest"
   },
   "dependencies": {
+    "@react-native-async-storage/async-storage": "1.22.0",
+    "@react-native-google-signin/google-signin": "^14.0.0",
+    "@react-navigation/native": "^7.1.8",
+    "@react-navigation/stack": "^7.3.1",
+    "axios": "^1.9.0",
     "react": "19.0.0",
-    "react-native": "0.78.2"
+    "react-native": "0.78.2",
+    "react-native-calendars": "^1.1312.0",
+    "react-native-geolocation-service": "^5.3.1",
+    "react-native-gesture-handler": "^2.25.0",
+    "react-native-inappbrowser-reborn": "^3.7.0",
+    "react-native-reanimated": "^3.17.5",
+    "react-native-safe-area-context": "^5.4.0",
+    "react-native-screens": "^4.10.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
