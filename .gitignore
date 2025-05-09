@@ -1,9 +1,18 @@
 # OSX
-#
 .DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
 
 # Xcode
-#
 build/
 *.pbxuser
 !default.pbxuser
@@ -21,50 +30,86 @@ DerivedData
 *.ipa
 *.xcuserstate
 **/.xcode.env.local
+*.xcworkspace
+!default.xcworkspace
+*.xcodeproj/project.xcworkspace/
+xcshareddata/
+*.dSYM.zip
+*.dSYM
 
 # Android/IntelliJ
-#
-build/
 .idea
 .gradle
 local.properties
 *.iml
+*.ipr
+*.iws
+.idea/
 *.hprof
 .cxx/
 *.keystore
 !debug.keystore
 .kotlin/
+captures/
+.externalNativeBuild/
+.navigation/
+output.json
+android/.project
+android/app/.project
+android/app/bin/
+android/app/gen/
+android/app/out/
+android/app/release/
+android/app/src/main/assets/index.android.bundle
+android/app/src/main/res/drawable-*
+android/app/src/main/res/raw/
 
 # node.js
-#
 node_modules/
 npm-debug.log
+yarn-debug.log
 yarn-error.log
+.pnp.*
+.npm
+.node_repl_history
 
 # fastlane
-#
-# It is recommended to not store the screenshots in the git repo. Instead, use fastlane to re-generate the
-# screenshots whenever they are needed.
-# For more information about the recommended setup visit:
-# https://docs.fastlane.tools/best-practices/source-control/
-
 **/fastlane/report.xml
 **/fastlane/Preview.html
 **/fastlane/screenshots
 **/fastlane/test_output
+fastlane/screenshots/**/*.png
+fastlane/test_output
 
 # Bundle artifact
 *.jsbundle
+index.android.bundle
+index.ios.bundle
+*.jsbundle.map
+index.android.bundle.map
+index.ios.bundle.map
 
 # Ruby / CocoaPods
 **/Pods/
+**/ios/Pods/
 /vendor/bundle/
+ios/Podfile.lock
+.ruby-version
+.ruby-gemset
 
-# Temporary files created by Metro to check the health of the file watcher
+# Temporary files created by Metro
 .metro-health-check*
+.metro/
+metro-cache/
+.metro-cache/
 
 # testing
 /coverage
+jest-coverage/
+__tests__/coverage
+__snapshots__/
+jest-junit.xml
+test-report.xml
 
 # Yarn
 .yarn/*
@@ -73,3 +118,95 @@ yarn-error.log
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+.pnp.*
+yarn-error.log
+yarn.lock
+# Uncomment the following if you're not using Zero-installs
+# .yarn/cache
+# .yarn/unplugged
+
+# 환경 변수 파일
+.env
+.env.*
+.env.local
+.env.development
+.env.test
+.env.production
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ESLint 캐시
+.eslintcache
+.eslintrc.json
+
+# VSCode 설정
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# Watchman 설정
+.watchmanconfig
+
+# Client ID 및 증명서 관련 파일
+client_*.plist
+client_secret_*.json
+GoogleService-Info.plist
+google-services.json
+credentials.json
+service-account.json
+*.mobileprovision
+*.cer
+*.p12
+*.keychain
+ios/*.xcconfig
+android/key.properties
+
+# 빌드 파일
+android/app/build/
+ios/build/
+build/
+dist/
+web-build/
+web-report/
+
+# 패키지 매니저 락 파일
+package-lock.json
+# yarn.lock은 yarn을 사용할 때 git에 포함시켜야 함 (버전 고정 목적)
+
+# React Native 특정 파일
+.buckconfig
+.flowconfig
+.prettierrc.js
+.prettierignore
+.editorconfig
+
+# Firebase
+google-services.json
+GoogleService-Info.plist
+
+# Crash logs
+crash.log
+npm-debug.log*
+
+# Hermes 엔진 관련
+android/app/src/main/assets/index.android.bundle.hbc
+ios/build/Build/Products/*/hermes.framework
+ios/Pods/hermes-engine/
+android/app/libs/hermes-release.aar
+
+# 빌드 결과물
+*.aab
+*.apk
+*.app
+*.ipa
+
+# 로컬 설정 파일
+*.log
+*.stackdump
+.cache
+.project
+.settings/
