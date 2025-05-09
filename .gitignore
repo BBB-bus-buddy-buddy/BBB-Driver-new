@@ -210,3 +210,4 @@ android/app/libs/hermes-release.aar
 .cache
 .project
 .settings/
+ios/Podfile.lock
