@@ -1,5 +1,5 @@
 // src/screens/LoginScreen.js
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Image,
   Alert,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -18,100 +19,74 @@ import {
   SHADOWS,
   SPACING,
 } from '../constants/theme';
-import {
-  GoogleSignin,
-  statusCodes,
-} from '@react-native-google-signin/google-signin';
-import { useUser } from '../context/UserContext';
-import { useAuth } from '../context/AuthContext';
-import { API_URL, GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID, GOOGLE_ANDROID_CLIENT_ID } from "@env";
+import InAppBrowser from 'react-native-inappbrowser-reborn';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// 플랫폼별 상수 정의
+const PLATFORM_CONSTANTS = {
+  OAUTH_URL: 'http://localhost:8088/oauth2/authorization/google?app=driver',
+  REDIRECT_SCHEME: Platform.select({
+    ios: 'org.reactjs.native.example.driver://oauth2callback',
+    android: 'com.driver://oauth2callback',
+  }),
+};
 
 const LoginScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(false);
-  const { userInfo, setUserInfo } = useUser();
-  const { googleLogin, isLoading } = useAuth();
 
-  // Google Sign-In 초기화
-  useEffect(() => {
-    console.log('[LoginScreen] Google SDK 설정 중');
-    GoogleSignin.configure({
-      iosClientId: GOOGLE_IOS_CLIENT_ID,
-      androidClientId: GOOGLE_ANDROID_CLIENT_ID,
-      webClientId: GOOGLE_WEB_CLIENT_ID,
-      offlineAccess: true,
-    });
-
-    console.log('[LoginScreen] 화면 준비 완료');
-  }, []);
-
-  // 실제 구글 로그인 처리
   const handleGoogleSignIn = async () => {
     try {
-      console.log('[LoginScreen] Google 로그인 시작');
+      console.log(`[LoginScreen] Google 로그인 시작 (플랫폼: ${Platform.OS})`);
       setLoading(true);
 
-      // Google Play 서비스 확인
-      await GoogleSignin.hasPlayServices();
-      console.log('[LoginScreen] Google Play 서비스 확인 완료');
+      // OAuth URL 및 리다이렉트 스킴 설정
+      const authUrl = PLATFORM_CONSTANTS.OAUTH_URL;
+      const redirectScheme = PLATFORM_CONSTANTS.REDIRECT_SCHEME;
+      
+      console.log(`[LoginScreen] 인앱 브라우저 열기: ${authUrl}, 리다이렉트: ${redirectScheme}`);
 
-      // 기존 로그인 상태 클리어
-      await GoogleSignin.signOut();
-      console.log('[LoginScreen] 기존 Google 로그인 상태 클리어');
-
-      // Google 로그인 실행
-      console.log('[LoginScreen] Google 로그인 SDK 호출');
-      const googleResponse = await GoogleSignin.signIn();
-      console.log('[LoginScreen] Google 로그인 성공:', googleResponse.user.email);
-
-      // 백엔드에 보낼 Google 응답 형식 맞추기
-      const oauthResponse = {
-        idToken: googleResponse.idToken,
-        user: {
-          name: googleResponse.user.name,
-          email: googleResponse.user.email
+      // 인앱 브라우저를 통한 OAuth 인증 수행
+      const result = await InAppBrowser.openAuth(authUrl, redirectScheme, {
+        showTitle: false,
+        enableUrlBarHiding: true,
+        enableDefaultShare: false,
+        ephemeralWebSession: false,
+      });
+      
+      if (result.type === 'success' && result.url) {
+        console.log(`[LoginScreen] 인증 성공, 받은 URL: ${result.url}`);
+  
+        // URL에서 토큰 추출 (정규식 사용)
+        const tokenMatch = result.url.match(/[?&]token=([^&]+)/);
+        const token = tokenMatch ? tokenMatch[1] : null;
+        
+        if (!token) {
+          console.error('[LoginScreen] URL에서 토큰을 찾을 수 없음:', result.url);
+          throw new Error('토큰을 받지 못했습니다.');
         }
-      };
-
-      console.log('[LoginScreen] 백엔드 인증 처리 시작');
-
-      // AuthContext를 통한 로그인
-      const result = await googleLogin(oauthResponse);
-      const { token, user, additionalInfoRequired } = result;
-
-      console.log('[LoginScreen] 백엔드 인증 성공, 사용자 정보:', user.email);
-
-      // UserContext에도 사용자 정보 저장
-      const userContextData = {
-        id: user.id || googleResponse.user.id,
-        name: user.name || googleResponse.user.name,
-        email: user.email || googleResponse.user.email,
-        role: user.role || 'GUEST',
-        organizationId: user.organizationId || '',
-        myStations: user.myStations || []
-      };
-
-      console.log('[LoginScreen] UserContext에 데이터 저장:', userContextData.email);
-      setUserInfo(userContextData);
-
-      // 추가 정보 입력이 필요한 경우
-      if (additionalInfoRequired) {
-        console.log('[LoginScreen] 추가 정보 입력 필요, 추가 정보 화면으로 이동');
-        navigation.replace('AdditionalInfo');
+        
+        console.log('[LoginScreen] 토큰 받음, 저장 중');
+        
+        // 토큰 저장
+        await AsyncStorage.setItem('token', token);
+                
+        // 역할에 따른 화면 이동
+        if (userInfo.role === 'GUEST') {
+          console.log('[LoginScreen] 게스트 유저, 추가 정보 화면으로 이동');
+          navigation.replace('AdditionalInfo');
+        } else {
+          console.log('[LoginScreen] 일반 유저, 홈 화면으로 이동');
+          navigation.replace('Home');
+        }
       } else {
-        // 홈 화면으로 이동
-        console.log('[LoginScreen] 로그인 완료, 홈 화면으로 이동');
-        navigation.replace('Home');
+        console.log(`[LoginScreen] 인증 취소 또는 실패: ${result.type}`);
+        throw new Error('인증이 취소되었거나 실패했습니다.');
       }
     } catch (error) {
-      console.error('[LoginScreen] Google 로그인 오류:', error);
-
-      if (error.code === statusCodes.SIGN_IN_CANCELLED) {
+      console.error(`[LoginScreen] Google 로그인 오류: ${error}`);
+      
+      if (error.message === '인증이 취소되었거나 실패했습니다.') {
         console.log('[LoginScreen] 로그인 취소됨');
-      } else if (error.code === statusCodes.IN_PROGRESS) {
-        console.log('[LoginScreen] 로그인 이미 진행 중');
-      } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
-        console.log('[LoginScreen] Play 서비스 사용 불가');
-        Alert.alert('오류', 'Google Play 서비스를 사용할 수 없습니다.');
       } else {
         Alert.alert('로그인 실패', '로그인 처리 중 오류가 발생했습니다.');
       }
@@ -119,11 +94,6 @@ const LoginScreen = ({ navigation }) => {
       setLoading(false);
       console.log('[LoginScreen] 로그인 처리 완료');
     }
-  };
-
-  const handleSignUp = () => {
-    console.log('[LoginScreen] 회원가입 화면으로 이동');
-    navigation.navigate('SignUp');
   };
 
   return (
@@ -141,8 +111,8 @@ const LoginScreen = ({ navigation }) => {
           <TouchableOpacity
             style={styles.googleButton}
             onPress={handleGoogleSignIn}
-            disabled={loading || isLoading}>
-            {(loading || isLoading) ? (
+            disabled={loading}>
+            {loading ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="small" color={COLORS.primary} />
                 <Text style={styles.loadingText}>로그인 중...</Text>
@@ -154,23 +124,22 @@ const LoginScreen = ({ navigation }) => {
                   style={styles.googleIcon}
                 />
                 <Text style={styles.googleButtonText}>
-                  Google로 로그인
+                  Google로 로그인/회원가입
                 </Text>
               </>
             )}
           </TouchableOpacity>
-
-          <TouchableOpacity style={styles.signUpButton} onPress={handleSignUp}>
-            <Text style={styles.signUpButtonText}>
-              계정이 없으신가요? 회원가입
-            </Text>
-          </TouchableOpacity>
         </View>
+        
+        <Text style={styles.infoText}>
+          비회원이라면, 구글 로그인 후 자동으로 회원가입 화면으로 전환됩니다.
+        </Text>
       </View>
     </SafeAreaView>
   );
 };
 
+// 스타일
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -214,7 +183,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: SPACING.md,
     ...SHADOWS.small,
-    minHeight: 50, // 버튼 최소 높이 설정
+    minHeight: 50,
   },
   googleIcon: {
     width: 24,
@@ -226,15 +195,6 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.md,
     fontWeight: FONT_WEIGHT.medium,
   },
-  signUpButton: {
-    marginTop: SPACING.md,
-    paddingVertical: SPACING.sm,
-  },
-  signUpButtonText: {
-    color: COLORS.primary,
-    fontSize: FONT_SIZE.sm,
-    textAlign: 'center',
-  },
   loadingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -245,6 +205,13 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontSize: FONT_SIZE.md,
     fontWeight: FONT_WEIGHT.medium,
+  },
+  infoText: {
+    marginTop: SPACING.xl,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.grey,
+    textAlign: 'center',
+    paddingHorizontal: SPACING.lg,
   },
 });
 
