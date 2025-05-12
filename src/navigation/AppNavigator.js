@@ -4,7 +4,7 @@ import { View, ActivityIndicator, Text, TouchableOpacity } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import SplashScreen from '../screens/SplashScreen';
 import LoginScreen from '../screens/LoginScreen';
-import SignUpScreen from '../screens/SignUpScreen';
+// SignUpScreen 임포트 제거
 import AdditionalInfoScreen from '../screens/AdditionalInfoScreen';
 import HomeScreen from '../screens/HomeScreen';
 import StartDriveScreen from '../screens/StartDriveScreen';
@@ -106,11 +106,10 @@ const AppNavigator = () => {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {!token ? (
-        // 인증되지 않은 사용자용 화면
+        // 인증되지 않은 사용자용 화면 - SignUp 화면 제거
         <>
           <Stack.Screen name="Splash" component={SplashScreen} />
           <Stack.Screen name="Login" component={LoginScreen} />
-          <Stack.Screen name="SignUp" component={SignUpScreen} />
         </>
       ) : additionalInfoRequired ? (
         // 추가 정보 입력이 필요한 사용자
