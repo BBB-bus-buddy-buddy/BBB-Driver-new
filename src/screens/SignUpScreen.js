@@ -46,71 +46,52 @@ const SignUpScreen = ({ navigation }) => {
       // Google 로그인 실행
       console.log('[SignUpScreen] Google 로그인 SDK 호출');
       const googleResponse = await GoogleSignin.signIn();
-      console.log('[SignUpScreen] Google 로그인 성공:', googleResponse.data.user.email);
+      console.log('[SignUpScreen] Google 로그인 성공:', googleResponse.user.email);
 
-      // 백엔드에 보낼 Google 응답 형식 맞추기 (필요한 필드만 포함)
+      // 백엔드에 보낼 Google 응답 형식 맞추기
       const oauthResponse = {
-        idToken: googleResponse.data.idToken,
+        idToken: googleResponse.idToken,
         user: {
-          name: googleResponse.data.user.name,
-          email: googleResponse.data.user.email
+          name: googleResponse.user.name,
+          email: googleResponse.user.email
         }
       };
 
       // 회원가입 처리
-      try {
-        // AuthContext의 signUp 함수 호출
-        console.log('[SignUpScreen] 백엔드 회원가입 요청 시작');
-        const success = await signUp(oauthResponse);
-        console.log('[SignUpScreen] 백엔드 회원가입 결과:', success ? '성공' : '실패');
+      console.log('[SignUpScreen] 백엔드 회원가입 요청 시작');
+      const success = await signUp(oauthResponse);
+      console.log('[SignUpScreen] 백엔드 회원가입 결과:', success ? '성공' : '실패');
 
-        if (success) {
-          // UserContext에도 기본 사용자 정보 저장
-          const userContextData = {
-            id: '',
-            name: oauthResponse.user.name,
-            email: oauthResponse.user.email,
-            role: 'GUEST', // 추가 정보 입력 전 기본 역할
-            organizationId: '',
-            myStations: []
-          };
-          
-          console.log('[SignUpScreen] UserContext에 기본 정보 저장:', userContextData.email);
-          setUserInfo(userContextData);
-
-          // 추가 정보 입력 화면으로 이동
-          console.log('[SignUpScreen] 추가 정보 입력 화면으로 이동');
-          navigation.navigate('AdditionalInfo');
-        }
-      } catch (apiError) {
-        console.error('[SignUpScreen] 백엔드 회원가입 오류:', apiError);
+      if (success) {
+        // UserContext에도 기본 사용자 정보 저장
+        const userContextData = {
+          id: '',
+          name: oauthResponse.user.name,
+          email: oauthResponse.user.email,
+          role: 'GUEST', // 추가 정보 입력 전 기본 역할
+          organizationId: '',
+          myStations: []
+        };
         
-        // 백엔드 연결 실패 시 테스트 모드로 처리
+        console.log('[SignUpScreen] UserContext에 기본 정보 저장:', userContextData.email);
+        setUserInfo(userContextData);
+
         Alert.alert(
-          '테스트 회원가입 성공',
-          '백엔드 연결은 실패했지만 테스트를 위해 회원가입 성공으로 처리합니다. 추가 정보 입력 화면으로 이동합니다.',
+          '회원가입 성공',
+          '회원가입이 완료되었습니다. 이제 추가 정보를 입력해주세요.',
           [
             {
               text: '확인',
               onPress: () => {
-                // 테스트용 기본 사용자 정보 저장
-                const tempUserData = {
-                  id: 'temp_' + Date.now(),
-                  name: oauthResponse.user.name,
-                  email: oauthResponse.user.email,
-                  role: 'GUEST',
-                  organizationId: '',
-                  myStations: []
-                };
-                
-                console.log('[SignUpScreen] 테스트 모드로 사용자 정보 저장:', tempUserData.email);
-                setUserInfo(tempUserData);
-                
+                // 추가 정보 입력 화면으로 이동
+                console.log('[SignUpScreen] 추가 정보 입력 화면으로 이동');
                 navigation.navigate('AdditionalInfo');
-              },
-            },
-          ],
+              }
+            }
+          ]
         );
+      } else {
+        Alert.alert('회원가입 실패', '회원가입 처리 중 오류가 발생했습니다.');
       }
     } catch (error) {
       console.error('[SignUpScreen] Google 회원가입 오류:', error);
@@ -133,49 +114,7 @@ const SignUpScreen = ({ navigation }) => {
       }
     } finally {
       setLoading(false);
-      console.log('[SignUpScreen] 테스트 회원가입 처리 완료');
-    }
-  };
-
-  // 테스트 회원가입 처리
-  const testGoogleSignUp = async () => {
-    try {
-      console.log('[SignUpScreen] 테스트 회원가입 시작');
-      setLoading(true);
-
-      // Google Play 서비스 확인
-      await GoogleSignin.hasPlayServices();
-      console.log('[SignUpScreen] Google Play 서비스 확인 완료');
-
-      // 기존 로그인 상태 클리어
-      await GoogleSignin.signOut();
-      console.log('[SignUpScreen] 기존 Google 로그인 상태 클리어');
-
-      // Google 로그인 실행
-      console.log('[SignUpScreen] Google 로그인 SDK 호출');
-      const googleResponse = await GoogleSignin.signIn();
-      console.log('[SignUpScreen] Google 로그인 성공:', googleResponse.data.user.email);
-
-      // 테스트용 기본 사용자 정보 저장
-      const tempUserData = {
-        id: 'temp_' + Date.now(),
-        name: googleResponse.data.user.name,
-        email: googleResponse.data.user.email,
-        role: 'GUEST',
-        organizationId: '',
-        myStations: []
-      };
-      
-      console.log('[SignUpScreen] 테스트 모드로 사용자 정보 저장:', tempUserData.email);
-      setUserInfo(tempUserData);
-      
-      // 추가 정보 입력 화면으로 이동
-      navigation.navigate('AdditionalInfo');
-    } catch (error) {
-      console.error('[SignUpScreen] 테스트 회원가입 오류:', error);
-      Alert.alert('회원가입 실패', '처리 중 오류가 발생했습니다.');
-    } finally {
-      setLoading(false);
+      console.log('[SignUpScreen] 회원가입 처리 완료');
     }
   };
 
@@ -227,26 +166,6 @@ const SignUpScreen = ({ navigation }) => {
                   Google로 회원가입
                 </Text>
               </>
-            )}
-          </TouchableOpacity>
-
-          {/* 테스트 회원가입 버튼 */}
-          <TouchableOpacity
-            style={[
-              styles.googleButton,
-              {backgroundColor: '#f5f5f5', marginTop: 10},
-            ]}
-            onPress={testGoogleSignUp}
-            disabled={loading || isLoading}>
-            {(loading || isLoading) ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="small" color={COLORS.primary} />
-                <Text style={styles.loadingText}>처리 중...</Text>
-              </View>
-            ) : (
-              <Text style={styles.googleButtonText}>
-                테스트 회원가입 (백엔드 통신 X)
-              </Text>
             )}
           </TouchableOpacity>
 
