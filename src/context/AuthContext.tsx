@@ -1,4 +1,3 @@
-// src/context/AuthContext.js
 import React, { createContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import authService from '../services/authService';
@@ -26,7 +25,6 @@ interface AuthContextType {
   token: string | null;
   additionalInfoRequired: boolean; 
   googleLogin: (googleData: GoogleOAuthResponse) => Promise<LoginResponse>;
-  testLogin: (userInfo: any) => Promise<LoginResponse>;
   signUp: (googleData: GoogleOAuthResponse) => Promise<boolean>;
   saveAdditionalInfo: (additionalInfo: any) => Promise<boolean>;
   logout: () => Promise<void>;
@@ -39,7 +37,6 @@ export const AuthContext = createContext<AuthContextType>({
   token: null,
   additionalInfoRequired: false,
   googleLogin: async () => ({ token: '', user: {}, additionalInfoRequired: false }),
-  testLogin: async () => ({ token: '', user: {}, additionalInfoRequired: false }),
   signUp: async () => false,
   saveAdditionalInfo: async () => false,
   logout: async () => {},
@@ -110,15 +107,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     checkAuthStatus();
   }, []);
 
-  // 인증 상태 변화 로깅
-  useEffect(() => {
-    console.log('[AuthContext] 인증 상태 변경:', {
-      isAuthenticated,
-      token: token ? '존재' : '없음',
-      additionalInfoRequired
-    });
-  }, [isAuthenticated, token, additionalInfoRequired]);
-
   // Google 로그인 처리
   const googleLogin = async (googleData: GoogleOAuthResponse): Promise<LoginResponse> => {
     try {
@@ -151,47 +139,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }
   };
 
-  // 테스트 로그인 (백엔드 통신 없음)
-  const testLogin = async (userInfo: any): Promise<LoginResponse> => {
-    try {
-      console.log('[AuthContext] 테스트 로그인 시작:', userInfo.email);
-      setIsLoading(true);
-      
-      // 테스트용 토큰 생성
-      const testToken = `test_token_${Date.now()}`;
-      
-      // 로컬 저장소에 정보 저장
-      try {
-        await AsyncStorage.setItem('token', testToken);
-        await AsyncStorage.setItem('userInfo', JSON.stringify(userInfo));
-        await AsyncStorage.setItem('hasAdditionalInfo', 'true');
-        
-        console.log('[AuthContext] 테스트 사용자 정보 저장 성공');
-      } catch (storageError) {
-        console.error('[AuthContext] AsyncStorage 저장 오류:', storageError);
-        throw new Error('사용자 정보 저장 중 오류가 발생했습니다.');
-      }
-      
-      // 인증 상태 업데이트
-      setToken(testToken);
-      setIsAuthenticated(true);
-      setAdditionalInfoRequired(false);
-      
-      console.log('[AuthContext] 테스트 로그인 성공');
-      
-      return {
-        token: testToken,
-        user: userInfo,
-        additionalInfoRequired: false
-      };
-    } catch (error) {
-      console.error('[AuthContext] 테스트 로그인 오류:', error);
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   // 회원가입 처리
   const signUp = async (googleData: GoogleOAuthResponse): Promise<boolean> => {
     try {
@@ -200,9 +147,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       
       // 회원가입 데이터 준비
       const signupData = {
-        email: googleData.user.email,
-        name: googleData.user.name,
-        idToken: googleData.idToken
+        idToken: googleData.idToken,
+        user: {
+          email: googleData.user.email,
+          name: googleData.user.name
+        }
       };
       
       // 백엔드 회원가입 처리
@@ -223,9 +172,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   };
   
   // 추가 정보 저장 처리
-const saveAdditionalInfo = async (additionalInfo: any): Promise<boolean> => {
+  const saveAdditionalInfo = async (additionalInfo: any): Promise<boolean> => {
     try {
-      console.log('[AuthContext] 추가 정보 저장 시작:', additionalInfo.email || '이메일 없음');
+      console.log('[AuthContext] 추가 정보 저장 시작:', additionalInfo.email);
       setIsLoading(true);
       
       // 백엔드 추가 정보 저장 처리
@@ -252,16 +201,8 @@ const saveAdditionalInfo = async (additionalInfo: any): Promise<boolean> => {
       console.log('[AuthContext] 로그아웃 시작');
       setIsLoading(true);
       
-      // 백엔드 로그아웃 처리 (가능한 경우)
-      try {
-        await authService.logout();
-      } catch (apiError) {
-        console.warn('[AuthContext] 백엔드 로그아웃 실패, 로컬 로그아웃 진행:', apiError);
-      }
-      
-      // 로컬 스토리지 데이터 삭제
-      const keysToRemove = ['token', 'userInfo', 'hasAdditionalInfo'];
-      await Promise.all(keysToRemove.map(key => AsyncStorage.removeItem(key)));
+      // 백엔드 로그아웃 처리
+      await authService.logout();
       
       // 인증 상태 초기화
       setToken(null);
@@ -284,7 +225,6 @@ const saveAdditionalInfo = async (additionalInfo: any): Promise<boolean> => {
     token,
     additionalInfoRequired,
     googleLogin,
-    testLogin,
     signUp,
     saveAdditionalInfo,
     logout
