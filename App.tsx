@@ -1,9 +1,7 @@
-// App.js
 import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AppNavigator from './src/navigation/AppNavigator';
-import { UserProvider } from './src/context/UserContext';
 import { LogBox } from 'react-native';
 
 // 경고 필터링 (선택적)
