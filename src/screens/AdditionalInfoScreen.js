@@ -1,4 +1,4 @@
-// src/screens/AdditionalInfoScreen.js
+// src/screens/AdditionalInfoScreen.js - useNavigation 추가 및 navigate로 변경 (계속)
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native'; // useNavigation 추가
 import {
   COLORS,
   FONT_SIZE,
@@ -20,23 +21,44 @@ import {
   BORDER_RADIUS,
   SPACING,
 } from '../constants/theme';
-import { useAuth } from '../context/AuthContext';
-import { useUser } from '../context/UserContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import apiClient from '../api/apiClient';
 
-const AdditionalInfoScreen = ({ navigation }) => {
-  const { saveAdditionalInfo, isLoading: authLoading } = useAuth();
-  const { userInfo, updateUserInfo } = useUser();
-  
+const AdditionalInfoScreen = () => {
+  const navigation = useNavigation(); // useNavigation 훅 사용
   const [licenseNumber, setLicenseNumber] = useState('');
   const [licenseType, setLicenseType] = useState('');
   const [licenseExpiryDate, setLicenseExpiryDate] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [loading, setLoading] = useState(false);
+  const [userInfo, setUserInfo] = useState(null);
 
   useEffect(() => {
-    console.log('[AdditionalInfoScreen] 화면 로드, 사용자 정보:', userInfo.email);
-  }, [userInfo]);
+    // 저장된 사용자 정보 가져오기
+    const getUserInfo = async () => {
+      try {
+        const storedUserInfo = await AsyncStorage.getItem('userInfo');
+        const token = await AsyncStorage.getItem('token');
+        console.log(`[AdditionalInfoScreen] token = ${token}`);
+        if (storedUserInfo) {
+          const parsedUserInfo = JSON.parse(storedUserInfo);
+          setUserInfo(parsedUserInfo);
+          console.log('[AdditionalInfoScreen] 저장된 사용자 정보 로드:', parsedUserInfo.email);
+        } else {
+          // 저장된 사용자 정보가 없으면 로그인 화면으로 이동
+          console.error('[AdditionalInfoScreen] 저장된 사용자 정보 없음');
+          Alert.alert('오류', '사용자 정보를 찾을 수 없습니다. 다시 로그인해주세요.');
+          navigation.navigate('Login');
+        }
+      } catch (error) {
+        console.error('[AdditionalInfoScreen] 사용자 정보 로드 오류:', error);
+        Alert.alert('오류', '사용자 정보를 불러올 수 없습니다. 다시 로그인해주세요.');
+        navigation.navigate('Login');
+      }
+    };
+
+    getUserInfo();
+  }, [navigation]);
 
   const validateInputs = () => {
     console.log('[AdditionalInfoScreen] 입력 데이터 검증 시작');
@@ -91,99 +113,75 @@ const AdditionalInfoScreen = ({ navigation }) => {
     try {
       // 추가 정보 객체 생성
       const additionalInfo = {
-        licenseNumber,
+        code: licenseNumber,
         licenseType,
         licenseExpiryDate,
         phoneNumber,
-        email: userInfo.email // 이메일 정보 포함
       };
       
-      console.log('[AdditionalInfoScreen] 추가 정보 객체 생성:', additionalInfo.email);
+      console.log('[AdditionalInfoScreen] 추가 정보 객체 생성:', additionalInfo);
 
-      try {
-        // 백엔드 API 호출 (실제 서비스)
-        const token = await AsyncStorage.getItem('token');
+      // API 호출로 데이터 저장
+      const response = await apiClient.post('/api/auth/rankUp', additionalInfo);
+      
+      // 성공 여부 확인
+      const success = response.data?.success || false;
+      
+      if (success) {
+        console.log('[AdditionalInfoScreen] 추가 정보 저장 성공');
         
-        if (token) {
-          console.log('[AdditionalInfoScreen] 토큰 발견, 백엔드에 추가 정보 저장 요청');
-          // AuthContext의 저장 함수 사용
-          const success = await saveAdditionalInfo(additionalInfo);
-          
-          if (success) {
-            console.log('[AdditionalInfoScreen] 추가 정보 저장 성공');
-            // UserContext 정보 업데이트
-            updateUserInfo({
-              role: 'DRIVER', // 운전자 역할로 업데이트
-              licenseInfo: {
-                licenseNumber,
-                licenseType,
-                licenseExpiryDate
-              },
-              phoneNumber
-            });
-            
-            console.log('[AdditionalInfoScreen] 사용자 정보 업데이트 완료, 홈 화면으로 이동');
-            // 홈 화면으로 이동
-            navigation.replace('Home');
-          } else {
-            console.error('[AdditionalInfoScreen] 추가 정보 저장 실패');
-            Alert.alert('저장 실패', '정보 저장에 실패했습니다. 다시 시도해주세요.');
-          }
-        } else {
-          // 테스트 모드 (토큰이 없는 경우)
-          console.log('[AdditionalInfoScreen] 토큰 없음, 테스트 모드로 처리');
-          throw new Error('토큰이 없습니다.');
+        // 성공 시 로컬에 상태 저장
+        await AsyncStorage.setItem('hasAdditionalInfo', true);
+        
+        // 사용자 정보 업데이트 (API에서 최신 정보 가져오기)
+        const userResponse = await apiClient.get('/api/auth/user');
+        if (userResponse.data?.data) {
+          const updatedUserInfo = userResponse.data.data;
+          await AsyncStorage.setItem('userInfo', JSON.stringify(updatedUserInfo));
+          console.log('[AdditionalInfoScreen] 사용자 정보 업데이트 완료');
         }
-      } catch (apiError) {
-        console.error('[AdditionalInfoScreen] 추가 정보 저장 오류:', apiError);
         
-        // 테스트 모드로 처리 (백엔드 연결 실패 시)
-        Alert.alert(
-          '테스트 모드 정보 저장',
-          '백엔드 연결에 실패했지만 테스트를 위해 정보가 저장되었습니다.',
-          [
-            {
-              text: '확인',
-              onPress: async () => {
-                console.log('[AdditionalInfoScreen] 테스트 모드로 추가 정보 저장');
-                // 로컬에 추가 정보 저장
-                await AsyncStorage.setItem('additionalInfo', JSON.stringify(additionalInfo));
-                await AsyncStorage.setItem('hasAdditionalInfo', 'true');
-                
-                // UserContext 업데이트
-                updateUserInfo({
-                  role: 'DRIVER',
-                  licenseInfo: {
-                    licenseNumber,
-                    licenseType,
-                    licenseExpiryDate
-                  },
-                  phoneNumber
-                });
-                
-                // 임시 토큰 생성 및 저장 (테스트용)
-                const mockToken = 'test_token_' + Date.now();
-                await AsyncStorage.setItem('token', mockToken);
-                
-                console.log('[AdditionalInfoScreen] 추가 정보 저장 완료, 홈 화면으로 이동');
-                // 홈 화면으로 이동
-                navigation.replace('Home');
-              },
-            },
-          ],
-        );
+        // 홈 화면으로 이동 - navigate 사용
+        navigation.navigate('Home');
+      } else {
+        console.error('[AdditionalInfoScreen] 추가 정보 저장 실패');
+        Alert.alert('저장 실패', '정보 저장에 실패했습니다. 다시 시도해주세요.');
       }
     } catch (error) {
-      console.error('[AdditionalInfoScreen] 추가 정보 처리 오류:', error);
-      Alert.alert(
-        '처리 실패',
-        '정보 저장 중 오류가 발생했습니다. 다시 시도해주세요.',
-      );
+      console.error('[AdditionalInfoScreen] 추가 정보 저장 오류:', error);
     } finally {
       setLoading(false);
       console.log('[AdditionalInfoScreen] 추가 정보 제출 처리 완료');
     }
   };
+
+  // 사용자 정보가 로드되지 않았으면 로딩 표시
+  if (!userInfo) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={styles.loadingText}>사용자 정보를 불러오는 중...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const goBack = async () => {
+    console.log('[AdditionalInfoScreen] 뒤로 가기');
+
+    try {
+      console.log('[AdditionalInfoScreen] AsyncStorage 청소 중...');
+      await AsyncStorage.removeItem('token');
+      await AsyncStorage.removeItem('userInfo');
+      await AsyncStorage.removeItem('hasAdditionalInfo');
+      console.log('[AdditionalInfoScreen] AsyncStorage 청소 완료!');
+    } catch (storageError) {
+      console.error('AsyncStorage 오류:', storageError);
+    }
+
+    navigation.navigate("Login");
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -194,10 +192,7 @@ const AdditionalInfoScreen = ({ navigation }) => {
           {/* 뒤로가기 */}
           <TouchableOpacity
             style={styles.backButton}
-            onPress={() => {
-              console.log('[AdditionalInfoScreen] 뒤로 가기');
-              navigation.goBack();
-            }}>
+            onPress={goBack}>
             <Text style={styles.backButtonText}>← 뒤로</Text>
           </TouchableOpacity>
           
@@ -270,8 +265,8 @@ const AdditionalInfoScreen = ({ navigation }) => {
           <TouchableOpacity
             style={styles.submitButton}
             onPress={handleSubmit}
-            disabled={loading || authLoading}>
-            {loading || authLoading ? (
+            disabled={loading}>
+            {loading ? (
               <ActivityIndicator color={COLORS.white} size="small" />
             ) : (
               <Text style={styles.submitButtonText}>정보 등록 완료</Text>
@@ -294,6 +289,16 @@ const styles = StyleSheet.create({
   scrollContainer: {
     flexGrow: 1,
     padding: SPACING.lg,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: SPACING.md,
+    fontSize: FONT_SIZE.md,
+    color: COLORS.grey,
   },
   header: {
     marginBottom: SPACING.xl,
