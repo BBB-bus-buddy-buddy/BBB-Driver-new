@@ -1,30 +1,61 @@
-// src/screens/SplashScreen.js
+// src/screens/SplashScreen.js - useNavigation 추가 및 navigate로 변경
 import React, { useEffect } from 'react';
 import { View, Text, Image, StyleSheet, ActivityIndicator } from 'react-native';
+import { useNavigation } from '@react-navigation/native'; // useNavigation 추가
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, FONT_SIZE, FONT_WEIGHT } from '../constants/theme';
 
-const SplashScreen = ({ navigation }) => {
+const SplashScreen = () => {
+  const navigation = useNavigation(); // useNavigation 훅 
+
   useEffect(() => {
     // 로그인 상태 확인
     const checkLoginStatus = async () => {
       try {
-        const userToken = await AsyncStorage.getItem('userToken');
-        // 2초 후 로그인 상태에 따라 화면 전환
-        setTimeout(() => {
-          if (userToken) {
-            navigation.replace('Home');
+        console.log('[SplashScreen] 로그인 상태 확인 중');
+        const token = await AsyncStorage.getItem('token');
+        
+        // 토큰이 있으면 사용자 정보 확인
+        if (token) {
+          console.log('[SplashScreen] 토큰 발견, 사용자 정보 확인 중');
+          const userInfoStr = await AsyncStorage.getItem('userInfo');
+          
+          if (userInfoStr) {
+            console.log('[SplashScreen] 사용자 정보 발견, 역할 확인 중');
+            const userInfo = JSON.parse(userInfoStr);
+            
+            // 사용자 유형에 따른 화면 이동
+            if (userInfo.role === 'ROLE_GUEST') {
+              // 추가 정보 입력이 필요한 사용자
+              console.log('[SplashScreen] 게스트 사용자, 추가 정보 화면으로 이동');
+              navigation.navigate('AdditionalInfo');
+            } else {
+              // 일반 사용자
+              console.log('[SplashScreen] 일반 사용자, 홈 화면으로 이동');
+              navigation.navigate('Home');
+            }
           } else {
-            navigation.replace('Login');
+            // 토큰은 있지만 사용자 정보가 없는 경우 로그인 화면으로 이동
+            console.log('[SplashScreen] 사용자 정보 없음, 로그인 화면으로 이동');
+            navigation.navigate('Login');
           }
-        }, 2000);
+        } else {
+          // 토큰이 없으면 로그인 화면으로 이동
+          console.log('[SplashScreen] 토큰 없음, 로그인 화면으로 이동');
+          navigation.navigate('Login');
+        }
       } catch (error) {
-        console.log('Error checking login status:', error);
-        navigation.replace('Login');
+        console.error('[SplashScreen] 로그인 상태 확인 오류:', error);
+        navigation.navigate('Login');
       }
     };
 
-    checkLoginStatus();
+    // 2초 후 로그인 상태 확인
+    const timer = setTimeout(() => {
+      checkLoginStatus();
+    }, 2000);
+
+    return () => clearTimeout(timer);
   }, [navigation]);
 
   return (
