@@ -1,5 +1,5 @@
 // src/screens/HomeScreen.js
-import React, {useState, useEffect} from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,8 +10,9 @@ import {
   Image,
   Alert,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
-import {SafeAreaView} from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   COLORS,
   FONT_SIZE,
@@ -20,138 +21,181 @@ import {
   SHADOWS,
   SPACING,
 } from '../constants/theme';
-import {isTimeNearby} from '../utils/dateUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DriveStatusCard from '../components/DriveStatusCard';
 import NotificationItem from '../components/NotificationItem';
 import BottomTabBar from '../components/BottomTabBar';
-import {useUser} from '../context/UserContext';
+import apiClient from '../api/apiClient';
+import { isTimeNearby } from '../utils/dateUtils';
 
-const HomeScreen = ({navigation}) => {
-  const {userInfo} = useUser();
-  const [userName, setUserName] = useState('');
+const HomeScreen = ({ navigation }) => {
+  const [userInfo, setUserInfo] = useState(null);
   const [driveSchedules, setDriveSchedules] = useState([]);
   const [activeTab, setActiveTab] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
-  const [weather, setWeather] = useState({temp: '23°C', condition: '맑음'});
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [weather, setWeather] = useState({ temp: '23°C', condition: '맑음' });
   const [notifications, setNotifications] = useState([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [activeBottomTab, setActiveBottomTab] = useState('home');
-  const [notificationModalVisible, setNotificationModalVisible] =
-    useState(false);
+  const [notificationModalVisible, setNotificationModalVisible] = useState(false);
 
-  // 이 부분 삭제
-  // const { drive} =
-
+  // 화면 로드 시 초기 데이터 로드
   useEffect(() => {
-    // 사용자 정보 로드
-    if (userInfo && userInfo.name) {
-      setUserName(userInfo.name);
-      console.log(`Context에 저장된 사용자 정보: ${JSON.stringify(userInfo)}`);
-      console.log(`현재 컴포넌트의 State에 저장된 사용자 이름: ${userName}`);
-    }
+    const initializeData = async () => {
+      try {
+        setInitialLoading(true);
+        
+        // 저장된 사용자 정보 가져오기
+        const storedUserInfo = await AsyncStorage.getItem('userInfo');
+        if (storedUserInfo) {
+          const parsedUserInfo = JSON.parse(storedUserInfo);
+          setUserInfo(parsedUserInfo);
+          console.log('[HomeScreen] 저장된 사용자 정보 로드:', parsedUserInfo.email);
+        } else {
+          // 저장된 사용자 정보가 없으면 로그인 화면으로 이동
+          console.error('[HomeScreen] 저장된 사용자 정보 없음');
+          Alert.alert('오류', '사용자 정보를 찾을 수 없습니다. 다시 로그인해주세요.');
+          navigation.replace('Login');
+          return;
+        }
+        
+        // 이후 다른 데이터 로드
+        await loadData();
+        
+      } catch (error) {
+        console.error('[HomeScreen] 초기화 오류:', error);
+        Alert.alert('오류', '정보를 불러올 수 없습니다. 다시 로그인해주세요.');
+        navigation.replace('Login');
+      } finally {
+        setInitialLoading(false);
+      }
+    };
 
-    // 데이터 로드
-    loadData();
-  }, [userInfo]);
+    initializeData();
+  }, [navigation]);
 
   const loadData = async () => {
     try {
+      setRefreshing(true);
+      
       // 운행 일정 로드
-      const schedules = await getDriveSchedules();
-
-      // 버튼 활성화 여부 계산
-      const schedulesWithButtonStatus = schedules.map(schedule => ({
-        ...schedule,
-        isButtonActive: isTimeNearby(schedule.departureTime),
-      }));
-
-      setDriveSchedules(schedulesWithButtonStatus);
+      try {
+        const schedulesResponse = await apiClient.get('/api/routes');
+        if (schedulesResponse.data?.data) {
+          const schedules = schedulesResponse.data.data;
+          
+          // 버튼 활성화 여부 계산
+          const schedulesWithButtonStatus = schedules.map(schedule => ({
+            ...schedule,
+            isButtonActive: isTimeNearby(schedule.departureTime),
+          }));
+          
+          setDriveSchedules(schedulesWithButtonStatus);
+        } else {
+          // API 응답이 없을 경우 임시 데이터 사용
+          setDriveSchedules([
+            {
+              id: '1',
+              busNumber: '101번',
+              route: '동부캠퍼스 - 서부캠퍼스',
+              departureTime: '14:00',
+              arrivalTime: '16:00',
+              isButtonActive: true,
+            },
+          ]);
+        }
+      } catch (scheduleError) {
+        console.error('[HomeScreen] 운행 일정 로드 오류:', scheduleError);
+        // 오류 발생 시 임시 데이터 사용
+        setDriveSchedules([
+          {
+            id: '1',
+            busNumber: '101번',
+            route: '동부캠퍼스 - 서부캠퍼스',
+            departureTime: '14:00',
+            arrivalTime: '16:00',
+            isButtonActive: true,
+          },
+        ]);
+      }
 
       // 날씨 정보 로드
-      const weatherInfo = await getWeatherInfo();
-      setWeather(weatherInfo);
+      try {
+        const weatherResponse = await apiClient.get('/api/weather');
+        if (weatherResponse.data?.data) {
+          setWeather(weatherResponse.data.data);
+        }
+      } catch (weatherError) {
+        console.error('[HomeScreen] 날씨 정보 로드 오류:', weatherError);
+        // 기본 날씨 정보는 이미 state에 설정되어 있음
+      }
 
-      // 알림 로드
-      const notifs = await getNotifications();
-      setNotifications(notifs);
-
-      // 읽지 않은 알림 개수 계산
-      const unreadCount = notifs.filter(
-        notification => notification.unread,
-      ).length;
-      setUnreadNotifications(unreadCount);
+      // 알림 정보 로드
+      try {
+        const notificationsResponse = await apiClient.get('/api/notifications');
+        if (notificationsResponse.data?.data) {
+          const notifs = notificationsResponse.data.data;
+          setNotifications(notifs);
+          
+          // 읽지 않은 알림 개수 계산
+          const unreadCount = notifs.filter(notification => notification.unread).length;
+          setUnreadNotifications(unreadCount);
+        } else {
+          // API 응답이 없을 경우 임시 데이터 사용
+          const dummyNotifications = [
+            {
+              id: '1',
+              message: '내일 운행 일정이 추가되었습니다.',
+              time: '오전 10:30',
+              unread: true,
+            },
+          ];
+          setNotifications(dummyNotifications);
+          setUnreadNotifications(1);
+        }
+      } catch (notificationError) {
+        console.error('[HomeScreen] 알림 정보 로드 오류:', notificationError);
+        // 임시 데이터 사용
+        const dummyNotifications = [
+          {
+            id: '1',
+            message: '내일 운행 일정이 추가되었습니다.',
+            time: '오전 10:30',
+            unread: true,
+          },
+        ];
+        setNotifications(dummyNotifications);
+        setUnreadNotifications(1);
+      }
+      
     } catch (error) {
       console.error('Error loading data:', error);
+      Alert.alert('데이터 로드 오류', '정보를 불러오는 중 문제가 발생했습니다.');
+    } finally {
+      setRefreshing(false);
     }
   };
 
-  // 여기에 드라이브 스케줄, 날씨 정보, 알림을 가져오는 함수들을 추가해야 합니다
-  const getDriveSchedules = async () => {
-    // 임시 데이터
-    return [
-      {
-        id: '1',
-        routeName: '동부 -> 서부',
-        departureTime: '14:00',
-        arrivalTime: '16:00',
-        startLocation: '울산과학대학교 동부캠퍼스',
-        endLocation: '울산과학대학교 서부캠퍼스',
-        totalStops: 5,
-        currentStop: 0,
-        status: 'scheduled',
-      },
-    ];
-  };
-
-  const getWeatherInfo = async () => {
-    // 임시 데이터
-    return {temp: '23°C', condition: '맑음'};
-  };
-
-  const getNotifications = async () => {
-    // 임시 데이터
-    return [
-      {
-        id: '1',
-        title: '운행 알림',
-        message: '내일 운행 일정이 추가되었습니다.',
-        time: '오전 10:30',
-        unread: true,
-      },
-    ];
-  };
-
   const onRefresh = async () => {
-    setRefreshing(true);
     await loadData();
-    setRefreshing(false);
   };
 
-  const handleStartDrive = driveId => {
+  const handleStartDrive = async (driveId) => {
     // 선택된 운행 정보 찾기
     const selectedDrive = driveSchedules.find(drive => drive.id === driveId);
 
     if (selectedDrive) {
       // 운행 정보를 로컬 스토리지에 저장
-      AsyncStorage.setItem('currentDrive', JSON.stringify(selectedDrive));
+      await AsyncStorage.setItem('currentDrive', JSON.stringify(selectedDrive));
       // 운행 시작 화면으로 이동
-      navigation.navigate('StartDrive', {drive: selectedDrive});
+      navigation.navigate('StartDrive', { drive: selectedDrive });
     } else {
       Alert.alert('오류', '운행 정보를 찾을 수 없습니다.');
     }
   };
 
-  const renderDriveItem = drive => (
-    <DriveStatusCard
-      key={drive.id}
-      drive={drive}
-      onPress={() => handleStartDrive(drive.id)}
-      isActive={drive.isButtonActive}
-    />
-  );
-
-  const handleBottomTabPress = tabId => {
+  const handleBottomTabPress = (tabId) => {
     setActiveBottomTab(tabId);
 
     switch (tabId) {
@@ -181,18 +225,44 @@ const HomeScreen = ({navigation}) => {
     }
   };
 
-  const markNotificationsAsRead = () => {
-    // 읽지 않은 알림을 모두 읽음 처리
-    const updatedNotifications = notifications.map(notification => ({
-      ...notification,
-      unread: false,
-    }));
+  const markNotificationsAsRead = async () => {
+    try {
+      // API 호출로 읽음 처리
+      await apiClient.post('/api/notifications/mark-read');
+      
+      // 읽지 않은 알림을 모두 읽음 처리 (UI 업데이트)
+      const updatedNotifications = notifications.map(notification => ({
+        ...notification,
+        unread: false,
+      }));
 
-    setNotifications(updatedNotifications);
-    setUnreadNotifications(0);
+      setNotifications(updatedNotifications);
+      setUnreadNotifications(0);
+    } catch (error) {
+      console.error('[HomeScreen] 알림 읽음 처리 오류:', error);
+      
+      // API 호출 실패 시 로컬에서만 처리
+      const updatedNotifications = notifications.map(notification => ({
+        ...notification,
+        unread: false,
+      }));
 
-    // 실제 앱에서는 서버에 읽음 상태 업데이트 요청을 보내야 함
+      setNotifications(updatedNotifications);
+      setUnreadNotifications(0);
+    }
   };
+
+  // 초기 로딩 중이면 로딩 화면 표시
+  if (initialLoading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={styles.loadingText}>정보를 불러오는 중...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -200,7 +270,7 @@ const HomeScreen = ({navigation}) => {
         <View style={styles.header}>
           <View>
             <Text style={styles.welcomeText}>안녕하세요,</Text>
-            <Text style={styles.userName}>{userName}님!</Text>
+            <Text style={styles.userName}>{userInfo?.name || '운전자'}님!</Text>
           </View>
 
           {/* 알림 아이콘 */}
@@ -226,25 +296,6 @@ const HomeScreen = ({navigation}) => {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }>
-          {/* 날씨 섹션 */}
-          <View style={styles.weatherSection}>
-            <View style={styles.weatherCard}>
-              <Text style={styles.weatherTitle}>오늘의 날씨</Text>
-              <View style={styles.weatherInfo}>
-                <Image
-                  source={require('../assets/weather-sunny.png')}
-                  style={styles.weatherIcon}
-                />
-                <View>
-                  <Text style={styles.temperature}>{weather.temp}</Text>
-                  <Text style={styles.weatherCondition}>
-                    {weather.condition}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          </View>
-
           {/* 운행 정보 섹션 */}
           <View style={styles.driveSection}>
             <Text style={styles.sectionTitle}>금일 운행 정보</Text>
@@ -274,7 +325,11 @@ const HomeScreen = ({navigation}) => {
 
             {/* 현재 선택된 운행 정보 */}
             {driveSchedules.length > 0 ? (
-              renderDriveItem(driveSchedules[activeTab])
+              <DriveStatusCard
+                drive={driveSchedules[activeTab]}
+                onPress={() => handleStartDrive(driveSchedules[activeTab].id)}
+                isActive={driveSchedules[activeTab].isButtonActive}
+              />
             ) : (
               <View style={styles.noDriveContainer}>
                 <Text style={styles.noDriveText}>
@@ -353,6 +408,16 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: SPACING.md,
+    fontSize: FONT_SIZE.md,
+    color: COLORS.grey,
   },
   header: {
     flexDirection: 'row',
