@@ -212,3 +212,4 @@ android/app/libs/hermes-release.aar
 .settings/
 ios/Podfile.lock
 Gemfile.lock
+todo.md
