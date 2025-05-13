@@ -8,14 +8,17 @@ import {
   TouchableOpacity,
   Image,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, SHADOWS, SPACING } from '../constants/theme';
 import BottomTabBar from '../components/BottomTabBar';
-import { useAuth } from '../context/AuthContext'; // 추가된 import
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import apiClient from '../api/apiClient';
 
 const ProfileScreen = ({ navigation }) => {
-  const { userInfo, logout } = useAuth(); // useAuth 훅 사용
+  const [userInfo, setUserInfo] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [activeBottomTab, setActiveBottomTab] = useState('profile');
   const [drivingStats, setDrivingStats] = useState({
     totalDrives: 42,
@@ -24,9 +27,46 @@ const ProfileScreen = ({ navigation }) => {
   });
 
   useEffect(() => {
-    // In a real app, you would fetch the driver's statistics from the API
-    // This is just dummy data for demonstration
-  }, []);
+    // 저장된 사용자 정보 가져오기
+    const getUserInfo = async () => {
+      try {
+        setLoading(true);
+        
+        const storedUserInfo = await AsyncStorage.getItem('userInfo');
+        if (storedUserInfo) {
+          const parsedUserInfo = JSON.parse(storedUserInfo);
+          setUserInfo(parsedUserInfo);
+          console.log('[ProfileScreen] 저장된 사용자 정보 로드:', parsedUserInfo.email);
+        } else {
+          // 저장된 사용자 정보가 없으면 로그인 화면으로 이동
+          console.error('[ProfileScreen] 저장된 사용자 정보 없음');
+          Alert.alert('오류', '사용자 정보를 찾을 수 없습니다. 다시 로그인해주세요.');
+          navigation.replace('Login');
+          return;
+        }
+        
+        // 운행 통계 정보 로드 (API 호출)
+        try {
+          const statsResponse = await apiClient.get('/api/user/stats');
+          if (statsResponse.data?.data) {
+            setDrivingStats(statsResponse.data.data);
+          }
+        } catch (statsError) {
+          console.error('[ProfileScreen] 운행 통계 로드 오류:', statsError);
+          // 오류 발생해도 기존 통계 정보 유지
+        }
+        
+      } catch (error) {
+        console.error('[ProfileScreen] 사용자 정보 로드 오류:', error);
+        Alert.alert('오류', '정보를 불러올 수 없습니다. 다시 로그인해주세요.');
+        navigation.replace('Login');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    getUserInfo();
+  }, [navigation]);
 
   const handleTabPress = (tabId) => {
     setActiveBottomTab(tabId);
@@ -59,10 +99,27 @@ const ProfileScreen = ({ navigation }) => {
           text: '로그아웃',
           onPress: async () => {
             try {
-              await logout(); // 수정된 부분: 반환값 체크 없이 프로미스 완료 대기
+              setLoading(true);
+              
+              // API 호출로 로그아웃 처리
+              await apiClient.post('/api/auth/logout');
+              
+              // 로컬 스토리지 정리
+              await AsyncStorage.removeItem('token');
+              await AsyncStorage.removeItem('userInfo');
+              await AsyncStorage.removeItem('hasAdditionalInfo');
+              
+              // 로그인 화면으로 이동
               navigation.replace('Login');
             } catch (error) {
-              Alert.alert('오류', '로그아웃 중 문제가 발생했습니다.');
+              console.error('[ProfileScreen] 로그아웃 오류:', error);
+              
+              // API 오류가 발생해도 로컬 스토리지 정리 후 로그인 화면으로 이동
+              await AsyncStorage.removeItem('token');
+              await AsyncStorage.removeItem('userInfo');
+              await AsyncStorage.removeItem('hasAdditionalInfo');
+              
+              navigation.replace('Login');
             }
           },
         },
@@ -72,9 +129,21 @@ const ProfileScreen = ({ navigation }) => {
   };
 
   const handleEditProfile = () => {
-    // In a real app, this would navigate to a profile edit screen
+    // 프로필 편집 기능
     Alert.alert('안내', '프로필 편집 기능은 준비 중입니다.');
   };
+
+  // 로딩 중이면 로딩 화면 표시
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={styles.loadingText}>정보를 불러오는 중...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -94,7 +163,7 @@ const ProfileScreen = ({ navigation }) => {
               </View>
               <View style={styles.profileInfo}>
                 <Text style={styles.profileName}>{userInfo?.name || '운전자'}</Text>
-                <Text style={styles.profileLicense}>{userInfo?.licenseType || '1종 대형'}</Text>
+                <Text style={styles.profileLicense}>{userInfo?.licenseInfo?.licenseType || '1종 대형'}</Text>
               </View>
               <TouchableOpacity style={styles.editButton} onPress={handleEditProfile}>
                 <Text style={styles.editButtonText}>편집</Text>
@@ -127,11 +196,11 @@ const ProfileScreen = ({ navigation }) => {
             <View style={styles.detailCard}>
               <View style={styles.detailItem}>
                 <Text style={styles.detailLabel}>면허 번호</Text>
-                <Text style={styles.detailValue}>{userInfo?.licenseNumber || '12-34-567890-01'}</Text>
+                <Text style={styles.detailValue}>{userInfo?.licenseInfo?.licenseNumber || '12-34-567890-01'}</Text>
               </View>
               <View style={styles.detailItem}>
                 <Text style={styles.detailLabel}>면허 만료일</Text>
-                <Text style={styles.detailValue}>{userInfo?.licenseExpiryDate || '2027-12-31'}</Text>
+                <Text style={styles.detailValue}>{userInfo?.licenseInfo?.licenseExpiryDate || '2027-12-31'}</Text>
               </View>
               <View style={styles.detailItem}>
                 <Text style={styles.detailLabel}>전화번호</Text>
@@ -180,6 +249,16 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: SPACING.md,
+    fontSize: FONT_SIZE.md,
+    color: COLORS.grey,
   },
   header: {
     alignItems: 'center',
