@@ -1,4 +1,4 @@
-// src/screens/LoginScreen.js
+// src/screens/LoginScreen.js - useNavigation 추가 및 navigate로 변경
 import React, { useState } from 'react';
 import {
   View,
@@ -11,6 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native'; // useNavigation 추가
 import {
   COLORS,
   FONT_SIZE,
@@ -21,6 +22,7 @@ import {
 } from '../constants/theme';
 import InAppBrowser from 'react-native-inappbrowser-reborn';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import apiClient from '../api/apiClient';
 
 // 플랫폼별 상수 정의
 const PLATFORM_CONSTANTS = {
@@ -31,9 +33,11 @@ const PLATFORM_CONSTANTS = {
   }),
 };
 
-const LoginScreen = ({ navigation }) => {
+const LoginScreen = () => {
   const [loading, setLoading] = useState(false);
+  const navigation = useNavigation();
 
+  
   const handleGoogleSignIn = async () => {
     try {
       console.log(`[LoginScreen] Google 로그인 시작 (플랫폼: ${Platform.OS})`);
@@ -69,14 +73,30 @@ const LoginScreen = ({ navigation }) => {
         
         // 토큰 저장
         await AsyncStorage.setItem('token', token);
+        
+        // 토큰 저장 후 사용자 정보 가져오기
+        apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        const userResponse = await apiClient.get(`/api/auth/user`);
+        console.log(`[LoginScreen] 사용자 상세 정보 = ${JSON.stringify(userResponse.data,null,2)}`);
+        const userInfo = userResponse.data?.data;
+        console.log(`[LoginScreen] 사용자 역할 = ${userInfo.role}`);
+        
+        if (!userInfo) {
+          console.error('[LoginScreen] 사용자 정보를 가져올 수 없음');
+          throw new Error('사용자 정보를 가져올 수 없습니다.');
+        }
+        
+        // 사용자 정보 저장
+        await AsyncStorage.setItem('userInfo', JSON.stringify(userInfo));
+        console.log('[LoginScreen] 사용자 정보 저장 완료:', userInfo.email);
                 
-        // 역할에 따른 화면 이동
-        if (userInfo.role === 'GUEST') {
+        // 역할에 따른 화면 이동 - navigate 사용
+        if (userInfo.role === 'ROLE_GUEST') {
           console.log('[LoginScreen] 게스트 유저, 추가 정보 화면으로 이동');
-          navigation.replace('AdditionalInfo');
+          navigation.navigate('AdditionalInfo');
         } else {
           console.log('[LoginScreen] 일반 유저, 홈 화면으로 이동');
-          navigation.replace('Home');
+          navigation.navigate('Home');
         }
       } else {
         console.log(`[LoginScreen] 인증 취소 또는 실패: ${result.type}`);
@@ -139,7 +159,7 @@ const LoginScreen = ({ navigation }) => {
   );
 };
 
-// 스타일
+// styles는 그대로 유지...
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
