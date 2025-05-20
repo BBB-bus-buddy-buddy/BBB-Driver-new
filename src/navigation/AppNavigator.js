@@ -4,7 +4,6 @@ import { View, ActivityIndicator, Text, TouchableOpacity } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import SplashScreen from '../screens/SplashScreen';
 import LoginScreen from '../screens/LoginScreen';
-import AdditionalInfoScreen from '../screens/AdditionalInfoScreen';
 import HomeScreen from '../screens/HomeScreen';
 import StartDriveScreen from '../screens/StartDriveScreen';
 import DrivingScreen from '../screens/DrivingScreen';
@@ -15,6 +14,7 @@ import ProfileScreen from '../screens/ProfileScreen';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '../constants/theme';
 import apiClient from '../api/apiClient';
+import AdditionalInfoScreen from '../screens/AdditionalInfo/AdditionalInfoScreen';
 
 // 스택 네비게이터 생성
 const Stack = createStackNavigator();
