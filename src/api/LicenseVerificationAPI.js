@@ -1,9 +1,8 @@
 import apiClient from './apiClient';
 
-// 상수 정의
+// 상수 정의(백엔드에서도 정의 되어 있음)
 const ORGANIZATION_CODE = "0001"; // 고정값
 const LOGIN_TYPE = "5"; // 간편인증 고정값
-const DEFAULT_LOGIN_TYPE_LEVEL = "1"; // 기본값 수정
 
 /**
  * 운전면허 진위확인 API 호출을 처리하는 서비스
@@ -91,7 +90,7 @@ export const prepareVerificationData = (licenseData) => {
     licenseUnique,
     licenseClass,
     serialNo,
-    telecom = '2', // 기본값 변경: KT
+    telecom,
     loginTypeLevel = DEFAULT_LOGIN_TYPE_LEVEL
   } = licenseData;
 
