@@ -210,13 +210,14 @@ const styles = StyleSheet.create({
     color: COLORS.black,
   },
   verifyCodeButton: {
-    backgroundColor: COLORS.secondary,
+    backgroundColor: COLORS.primary,
     borderRadius: BORDER_RADIUS.sm,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
     marginLeft: SPACING.sm,
     alignItems: 'center',
     justifyContent: 'center',
+    width: 48,
     minWidth: 90,
   },
   verifyCodeButtonText: {
@@ -225,7 +226,7 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHT.medium,
   },
   verifyButton: {
-    backgroundColor: COLORS.secondary,
+    backgroundColor: COLORS.primary,
     borderRadius: BORDER_RADIUS.sm,
     paddingVertical: SPACING.md,
     alignItems: 'center',
@@ -244,7 +245,7 @@ const styles = StyleSheet.create({
   },
   backStepButton: {
     flex: 1,
-    backgroundColor: COLORS.lightGrey,
+    backgroundColor: COLORS.extraLightGrey,
     borderRadius: BORDER_RADIUS.sm,
     paddingVertical: SPACING.md,
     alignItems: 'center',
@@ -265,7 +266,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
   disabledButton: {
-    backgroundColor: COLORS.lightGrey,
+    backgroundColor: COLORS.extraLightGrey,
   },
   submitButtonText: {
     color: COLORS.white,
