@@ -16,7 +16,7 @@ import {
   prepareVerificationData,
   verifyAndRankUpDriver
 } from '../../api/LicenseVerificationAPI';
-import { verifyOrganizationCode } from '../../api/OrganizationAPI';
+import { verifyOrganizationCode } from '../../api/organizationApi';
 
 // 유효성 검증 관련 임포트
 import { validateStep2, validateStep3, validateAllInputs } from './validation';
