@@ -1,5 +1,5 @@
 // src/screens/AdditionalInfo/components.js
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, TextInput, StyleSheet } from 'react-native';
 import { COLORS, FONT_SIZE, BORDER_RADIUS, SPACING } from '../../constants/theme';
 
@@ -107,41 +107,48 @@ export const IdentityNumberInput = ({ value, onChangeText, errorMessage }) => {
 
 // 운전면허번호 입력 컴포넌트
 export const LicenseNumberInput = ({ value, onChange, onParsed, errorMessage }) => {
+  // 면허번호 포맷팅 함수
   const formatLicenseNumber = (text) => {
-    // 숫자와 하이픈만 허용
-    const cleanedText = text.replace(/[^\d-]/g, '');
+    // 숫자만 추출
+    const numbersOnly = text.replace(/[^0-9]/g, '');
     
-    // 하이픈 제거
-    const numbers = cleanedText.replace(/-/g, '');
+    // 포맷팅된 결과 생성
+    let formatted = '';
     
-    // 하이픈 추가 (12-34-567890-12 형식)
-    if (numbers.length <= 2) {
-      return numbers;
-    } else if (numbers.length <= 4) {
-      return `${numbers.slice(0, 2)}-${numbers.slice(2)}`;
-    } else if (numbers.length <= 10) {
-      return `${numbers.slice(0, 2)}-${numbers.slice(2, 4)}-${numbers.slice(4)}`;
+    if (numbersOnly.length <= 2) {
+      formatted = numbersOnly;
+    } else if (numbersOnly.length <= 4) {
+      formatted = `${numbersOnly.slice(0, 2)}-${numbersOnly.slice(2)}`;
+    } else if (numbersOnly.length <= 10) {
+      formatted = `${numbersOnly.slice(0, 2)}-${numbersOnly.slice(2, 4)}-${numbersOnly.slice(4)}`;
     } else {
-      return `${numbers.slice(0, 2)}-${numbers.slice(2, 4)}-${numbers.slice(4, 10)}-${numbers.slice(10, 12)}`;
+      formatted = `${numbersOnly.slice(0, 2)}-${numbersOnly.slice(2, 4)}-${numbersOnly.slice(4, 10)}-${numbersOnly.slice(10)}`;
     }
+    
+    return formatted;
   };
   
-  const handleChange = (text) => {
-    const formattedLicense = formatLicenseNumber(text);
-    onChange(formattedLicense);
-    
-    // 면허번호 파싱 (12-34-567890-12 형식)
-    const numbers = formattedLicense.replace(/-/g, '');
-    if (numbers.length >= 12) {
-      const parsedValues = {
-        licenseRegion: numbers.slice(0, 2), // 지역코드
-        licenseYear: numbers.slice(2, 4), // 연도코드
-        licenseUnique: numbers.slice(4, 10), // 고유번호
-        licenseClass: numbers.slice(10, 12) // 분류코드
-      };
+  // 값이 변경될 때마다 파싱 실행
+  useEffect(() => {
+    if (value) {
+      const numbersOnly = value.replace(/[^0-9]/g, '');
       
-      onParsed(parsedValues);
+      if (numbersOnly.length >= 4) {
+        const parsedValues = {
+          licenseRegion: numbersOnly.slice(0, 2),
+          licenseYear: numbersOnly.slice(2, 4),
+          licenseUnique: numbersOnly.length > 4 ? numbersOnly.slice(4, Math.min(10, numbersOnly.length)) : '',
+          licenseClass: numbersOnly.length > 10 ? numbersOnly.slice(10) : ''
+        };
+        
+        onParsed(parsedValues);
+      }
     }
+  }, [value]); // onParsed 의존성 제거
+  
+  const handleChange = (text) => {
+    const formattedText = formatLicenseNumber(text);
+    onChange(formattedText);
   };
   
   return (
@@ -153,7 +160,7 @@ export const LicenseNumberInput = ({ value, onChange, onParsed, errorMessage }) 
         placeholder="12-34-567890-12"
         placeholderTextColor={COLORS.lightGrey}
         keyboardType="numeric"
-        maxLength={15} // 12-34-567890-12 (15 characters with hyphens)
+        maxLength={16} // 12-34-567890-12 형식은 최대 16자
       />
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
     </View>
