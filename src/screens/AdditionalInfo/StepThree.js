@@ -5,6 +5,8 @@ import { COLORS, FONT_SIZE, FONT_WEIGHT, SPACING, BORDER_RADIUS } from '../../co
 import { LicenseNumberInput, LicenseExpiryDateInput } from './components';
 
 const StepThree = ({
+  organizationCode,
+  setOrganizatinCode,
   licenseData,
   setLicenseData,
   verificationStatus,
@@ -31,8 +33,8 @@ const StepThree = ({
                 errors.organizationCode ? styles.inputError : null,
                 verificationStatus.organizationVerified ? styles.inputVerified : null
               ]}
-              value={licenseData.organizationCode}
-              onChangeText={(text) => setLicenseData({ ...licenseData, organizationCode: text })}
+              value={organizationCode}
+              onChangeText={(text) => setOrganizatinCode(text)}
               placeholder="조직 코드를 입력하세요"
               placeholderTextColor={COLORS.lightGrey}
               editable={!verificationStatus.organizationVerified}

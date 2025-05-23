@@ -39,23 +39,25 @@ const AdditionalInfoScreen = () => {
 
   // 개인정보 입력 상태
   const [userData, setUserData] = useState({
-    userName: '',
-    identity: '',
-    birthDate: '',
-    phoneNumber: ''
+    userName: '', // 면허 소유자명
+    identity: '', // 주민등록번호
+    birthDate: '', // 생년월일
+    phoneNumber: '' // 전화번호
   });
+
+  // 조직 코드 입력 상태
+  const [organizationCode, setOrganizatinCode] = useState('');
 
   // 면허정보 입력 상태
   const [licenseData, setLicenseData] = useState({
-    organizationCode: '',
-    licenseNumber: '',
-    serialNo: '',
-    licenseType: '',
-    licenseExpiryDate: '',
-    licenseRegion: '',
-    licenseYear: '',
-    licenseUnique: '',
-    licenseClass: ''
+    licenseNumber: '', // 운전면허 번호
+    serialNo: '', // 운전면허 일련번호(면허증 우측하단)
+    licenseType: '', // 면허 종류
+    licenseExpiryDate: '', // 면허 만료일자
+    licenseRegion: '', // 운전면허 번호 - 1번째 자리
+    licenseYear: '', // 운전면허 번호 - 2번째 자리 
+    licenseUnique: '', // 운전면허 번호 - 3번째 자리
+    licenseClass: '' // 운전면허 번호 - 4번째 자리
   });
 
   // 검증 관련 상태
@@ -103,20 +105,28 @@ const AdditionalInfoScreen = () => {
 
   // 조직 코드 검증
   const handleVerifyOrganizationCode = async () => {
-    if (!licenseData.organizationCode.trim()) {
+    if (!organizationCode.trim()) {
       setErrors({ ...errors, organizationCode: '조직 코드를 입력해주세요.' });
       return;
     }
 
     try {
       setVerifyingCode(true);
-      const response = await verifyOrganizationCode(licenseData.organizationCode);
+      const response = await verifyOrganizationCode(organizationCode);
 
       if (response.success) {
+        // 성공적으로 조직 코드가 검증됨
         setVerificationStatus({ ...verificationStatus, organizationVerified: true });
+        
+        // 조직 코드 저장
+        if (response.data) {
+          setOrganizatinCode(response.data)
+        }
+
         Alert.alert('검증 성공', '유효한 조직 코드입니다.');
       } else {
-        setErrors({ ...errors, organizationCode: '유효하지 않은 조직 코드입니다.' });
+        // 검증 실패
+        setErrors({ ...errors, organizationCode: response.message || '유효하지 않은 조직 코드입니다.' });
         Alert.alert('검증 실패', response.message || '유효하지 않은 조직 코드입니다.');
       }
     } catch (error) {
@@ -181,8 +191,6 @@ const AdditionalInfoScreen = () => {
 
     try {
       const formData = {
-        // 조직 정보
-        organization: licenseData.organizationCode,
 
         // 개인 정보
         userName: userData.userName,
@@ -295,6 +303,8 @@ const AdditionalInfoScreen = () => {
 
           {currentStep === 3 && (
             <StepThree
+              organizationCode={organizationCode}
+              setOrganizatinCode={setOrganizatinCode}
               licenseData={licenseData}
               setLicenseData={setLicenseData}
               verificationStatus={verificationStatus}
