@@ -15,6 +15,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '../constants/theme';
 import apiClient from '../api/apiClient';
 import AdditionalInfoScreen from '../screens/AdditionalInfo/AdditionalInfoScreen';
+import AdditionalInfoBeta from '../screens/AdditionalInfoBeta/AdditioncalInfoBeta';
 
 // 스택 네비게이터 생성
 const Stack = createStackNavigator();
@@ -166,7 +167,8 @@ const AppNavigator = () => {
       {/* 모든 화면을 항상 포함 */}
       <Stack.Screen name="Splash" component={SplashScreen} />
       <Stack.Screen name="Login" component={LoginScreen} />
-      <Stack.Screen name="AdditionalInfo" component={AdditionalInfoScreen} />
+      {/* <Stack.Screen name="AdditionalInfo" component={AdditionalInfoScreen} /> */}
+      <Stack.Screen name="AdditionalInfo" component={AdditionalInfoBeta} />
       <Stack.Screen name="Home" component={HomeScreen} />
       <Stack.Screen name="StartDrive" component={StartDriveScreen} />
       <Stack.Screen name="Driving" component={DrivingScreen} />
