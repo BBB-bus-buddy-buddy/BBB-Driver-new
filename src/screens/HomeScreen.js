@@ -120,17 +120,6 @@ const HomeScreen = ({ navigation }) => {
         ]);
       }
 
-      // 날씨 정보 로드
-      try {
-        const weatherResponse = await apiClient.get('/api/weather');
-        if (weatherResponse.data?.data) {
-          setWeather(weatherResponse.data.data);
-        }
-      } catch (weatherError) {
-        console.error('[HomeScreen] 날씨 정보 로드 오류:', weatherError);
-        // 기본 날씨 정보는 이미 state에 설정되어 있음
-      }
-
       // 알림 정보 로드
       try {
         const notificationsResponse = await apiClient.get('/api/notifications');
