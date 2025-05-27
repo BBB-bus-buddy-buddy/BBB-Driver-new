@@ -1,5 +1,5 @@
 // src/api/OrganizationAPI.js
-import apiClient from './apiClient';
+import apiClient from './client';
 
 /**
  * 조직 코드 검증 API

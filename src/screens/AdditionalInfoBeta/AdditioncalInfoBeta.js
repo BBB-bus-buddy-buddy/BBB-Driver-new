@@ -1,12 +1,13 @@
-// src/screens/AdditionalInfoBeta/AdditionalInfoBeta.js
+// src/screens/AdditionalInfoBeta/AdditionalInfoBeta.js 
 import React, { useState } from 'react';
 import { View, Text, ScrollView, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ValidationService } from '../../services';
+import { storage } from '../../utils/storage';
+
 import PersonalInfoStep from './step/PersonalInfoStep';
 import LicenseInfoStep from './step/LicenseInfoStep';
 import OrganizationStep from './step/OrganizationStep';
-import { upgradeToDriver } from '../../services/driverService';
 import {
     validateIdentityNumber,
     validateBirthDate,
@@ -50,9 +51,7 @@ const AdditionalInfoBeta = () => {
     // 입력 포맷팅 함수들
     const formatters = {
         identity: (value) => {
-            // 숫자만 추출
             const numbers = value.replace(/\D/g, '');
-            // 6자리까지는 그대로, 7자리부터 하이픈 추가
             if (numbers.length <= 6) {
                 return numbers;
             }
@@ -60,9 +59,7 @@ const AdditionalInfoBeta = () => {
         },
 
         phoneNumber: (value) => {
-            // 숫자만 추출
             const numbers = value.replace(/\D/g, '');
-            // 3-4-4 패턴으로 하이픈 추가
             if (numbers.length <= 3) {
                 return numbers;
             } else if (numbers.length <= 7) {
@@ -72,9 +69,7 @@ const AdditionalInfoBeta = () => {
         },
 
         licenseNumber: (value) => {
-            // 숫자만 추출
             const numbers = value.replace(/\D/g, '');
-            // 2-2-6-2 패턴으로 하이픈 추가
             if (numbers.length <= 2) {
                 return numbers;
             } else if (numbers.length <= 4) {
@@ -86,9 +81,7 @@ const AdditionalInfoBeta = () => {
         },
 
         licenseExpiryDate: (value) => {
-            // 숫자만 추출
             const numbers = value.replace(/\D/g, '');
-            // YYYY-MM-DD 패턴으로 하이픈 추가
             if (numbers.length <= 4) {
                 return numbers;
             } else if (numbers.length <= 6) {
@@ -98,17 +91,14 @@ const AdditionalInfoBeta = () => {
         },
 
         birthDate: (value) => {
-            // 생년월일은 숫자만 (YYYYMMDD)
             return value.replace(/\D/g, '').slice(0, 8);
         },
 
         licenseSerial: (value) => {
-            // 영문과 숫자만 허용, 대문자로 변환
             return value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6);
         },
 
         organizationId: (value) => {
-            // 영문과 숫자만 허용
             return value.replace(/[^A-Za-z0-9]/g, '');
         }
     };
@@ -161,7 +151,6 @@ const AdditionalInfoBeta = () => {
 
             case 'licenseType':
                 if (value) {
-                    // 유효한 면허 종류 목록
                     const validTypes = ['1종대형', '1종보통', '2종보통', '2종소형'];
                     isValid = validTypes.includes(value);
                     if (!isValid) {
@@ -229,7 +218,7 @@ const AdditionalInfoBeta = () => {
         }
     };
 
-    // 단계별 유효성 검사 (간소화)
+    // 단계별 유효성 검사
     const validateStep = (step) => {
         switch (step) {
             case 1:
@@ -253,10 +242,10 @@ const AdditionalInfoBeta = () => {
 
         setLoading(true);
         try {
-            const response = await upgradeToDriver(driverInfo);
+            const response = await ValidationService.upgradeToDriver(driverInfo);
 
             if (response.success) {
-                await AsyncStorage.setItem('userInfo', JSON.stringify(response.data));
+                await storage.setUserInfo(response.data);
 
                 Alert.alert(
                     '등록 완료',
@@ -264,7 +253,7 @@ const AdditionalInfoBeta = () => {
                     [
                         {
                             text: '확인',
-                            onPress: () => navigation.navigate('HomeScreen')
+                            onPress: () => navigation.navigate('Home')
                         }
                     ]
                 );
@@ -272,7 +261,7 @@ const AdditionalInfoBeta = () => {
                 Alert.alert('오류', response.message || '등록 중 오류가 발생했습니다.');
             }
         } catch (error) {
-            console.error('Driver registration error:', error);
+            console.error('[AdditionalInfoBeta] 드라이버 등록 오류:', error);
             Alert.alert('오류', '서버 연결에 실패했습니다. 잠시 후 다시 시도해주세요.');
         } finally {
             setLoading(false);

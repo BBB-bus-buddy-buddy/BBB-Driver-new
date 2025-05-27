@@ -1,3 +1,4 @@
+// src/screens/MessageScreen.js
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -12,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, SHADOWS, SPACING } from '../constants/theme';
 import BottomTabBar from '../components/BottomTabBar';
+import { MessageService } from '../services';
 
 const MessageScreen = ({ navigation }) => {
   const [messages, setMessages] = useState([]);
@@ -23,39 +25,13 @@ const MessageScreen = ({ navigation }) => {
   }, []);
 
   const loadMessages = async () => {
-    // Dummy data - in a real app, this would be fetched from an API
-    const dummyMessages = [
-      {
-        id: 1,
-        sender: '관리자',
-        preview: '안전 운행 교육 안내',
-        date: '오늘',
-        unread: true,
-      },
-      {
-        id: 2,
-        sender: '운행관리팀',
-        preview: '다음 주 운행 일정 변경 안내',
-        date: '어제',
-        unread: false,
-      },
-      {
-        id: 3,
-        sender: '차량관리팀',
-        preview: '차량 점검 일정 안내',
-        date: '2일 전',
-        unread: false,
-      },
-      {
-        id: 4,
-        sender: '인사팀',
-        preview: '복지 제도 변경 안내',
-        date: '1주일 전',
-        unread: false,
-      },
-    ];
-
-    setMessages(dummyMessages);
+    try {
+      const messageData = await MessageService.getMessages();
+      setMessages(messageData);
+    } catch (error) {
+      console.error('[MessageScreen] 메시지 로드 오류:', error);
+      setMessages(dummyMessages);
+    }
   };
 
   const onRefresh = async () => {
@@ -66,7 +42,7 @@ const MessageScreen = ({ navigation }) => {
 
   const handleTabPress = (tabId) => {
     setActiveBottomTab(tabId);
-    
+
     switch (tabId) {
       case 'home':
         navigation.navigate('Home');
@@ -82,8 +58,28 @@ const MessageScreen = ({ navigation }) => {
     }
   };
 
+  const handleMessagePress = async (messageId) => {
+    try {
+      const result = await MessageService.markMessageAsRead(messageId);
+
+      if (result.success) {
+        // 로컬 상태 업데이트
+        setMessages(prevMessages =>
+          prevMessages.map(msg =>
+            msg.id === messageId ? { ...msg, unread: false } : msg
+          )
+        );
+      }
+    } catch (error) {
+      console.error('[MessageScreen] 메시지 읽음 처리 오류:', error);
+    }
+  };
+
   const renderMessageItem = ({ item }) => (
-    <TouchableOpacity style={styles.messageItem}>
+    <TouchableOpacity
+      style={styles.messageItem}
+      onPress={() => handleMessagePress(item.id)}
+    >
       <View style={styles.messageContent}>
         <View style={styles.messageHeader}>
           <Text style={styles.senderName}>{item.sender}</Text>

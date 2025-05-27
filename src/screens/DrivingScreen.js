@@ -1,4 +1,4 @@
-// src/screens/DrivingScreen.js
+// src/screens/DrivingScreen.js 
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -11,8 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, SHADOWS, SPACING } from '../constants/theme';
-import { endDrive } from '../services/driveService';
-import { getNextStopInfo } from '../services/driveService';
+import { DriveService } from '../services';
 import { startLocationTracking, stopLocationTracking } from '../services/locationService';
 
 const DrivingScreen = ({ navigation, route }) => {
@@ -29,39 +28,39 @@ const DrivingScreen = ({ navigation, route }) => {
   // 운행 시간 카운터와 위치 추적
   useEffect(() => {
     const startTime = new Date(drive.startTime);
-    
+
     // 시간 타이머
     const timer = setInterval(() => {
       const now = new Date();
       setCurrentTime(now);
-      
+
       // 경과 시간 계산
       const diff = now - startTime;
       const hours = Math.floor(diff / (1000 * 60 * 60)).toString().padStart(2, '0');
       const minutes = Math.floor((diff / (1000 * 60)) % 60).toString().padStart(2, '0');
       const seconds = Math.floor((diff / 1000) % 60).toString().padStart(2, '0');
       setElapsedTime(`${hours}:${minutes}:${seconds}`);
-      
-      // 다음 정거장 정보 업데이트 (실제로는 현재 위치 기반으로 계산해야 함)
-      setNextStopInfo(getNextStopInfo(drive.route, diff));
-      
+
+      const nextStop = DriveService.getNextStopInfo(drive.route, diff);
+      setNextStopInfo(nextStop);
+
       // 시뮬레이션: 1분 후에 목적지 도착으로 설정
       if (diff > 60000) {
         setIsAtDestination(true);
       }
     }, 1000);
-    
+
     // 위치 추적 시작
     const watchId = startLocationTracking((location) => {
       // 현재 위치가 바뀔 때마다 호출되는 콜백
-      console.log('Current location:', location);
-      
+      console.log('[DrivingScreen] Current location:', location);
+
       // 실제로는 여기서 현재 위치와 경로 정보를 서버에 전송하고
       // 다음 정거장 정보와 목적지 도착 여부를 계산해야 함
     });
-    
+
     setLocationTrackingId(watchId);
-    
+
     // 컴포넌트 언마운트 시 타이머와 위치 추적 정리
     return () => {
       clearInterval(timer);
@@ -85,9 +84,9 @@ const DrivingScreen = ({ navigation, route }) => {
       );
       return true;
     };
-    
+
     const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
-    
+
     return () => backHandler.remove();
   }, [isAtDestination]);
 
@@ -117,15 +116,13 @@ const DrivingScreen = ({ navigation, route }) => {
       if (locationTrackingId) {
         stopLocationTracking(locationTrackingId);
       }
-      
-      // 운행 종료 처리
-      const completedDrive = await endDrive(drive);
-      
+      const completedDrive = await DriveService.endDrive(drive);
+
       // 운행 종료 화면으로 이동
       navigation.replace('EndDrive', { drive: completedDrive });
     } catch (error) {
-      console.error('Error ending drive:', error);
-      Alert.alert('오류', '운행을 종료할 수 없습니다. 다시 시도해주세요.');
+      console.error('[DrivingScreen] 운행 종료 오류:', error);
+      Alert.alert('오류', error.message || '운행을 종료할 수 없습니다. 다시 시도해주세요.');
     }
   };
 
@@ -142,14 +139,14 @@ const DrivingScreen = ({ navigation, route }) => {
               <View style={styles.liveDot} />
               <Text style={styles.statusText}>실시간 운행 중</Text>
             </View>
-            
+
             <View style={styles.busInfoContainer}>
               <Text style={styles.busNumber}>{drive.busNumber}</Text>
               <View style={styles.routeBadge}>
                 <Text style={styles.routeBadgeText}>{drive.route}</Text>
               </View>
             </View>
-            
+
             <View style={styles.timeInfoContainer}>
               <View style={styles.timeInfoItem}>
                 <Text style={styles.timeInfoLabel}>운행 시작</Text>
@@ -177,7 +174,7 @@ const DrivingScreen = ({ navigation, route }) => {
               </View>
             </View>
           </View>
-          
+
           <View style={styles.nextStopCard}>
             <Text style={styles.nextStopLabel}>다음 정거장</Text>
             <Text style={styles.nextStopName}>{nextStopInfo.name}</Text>
@@ -191,7 +188,7 @@ const DrivingScreen = ({ navigation, route }) => {
               </Text>
             </View>
           </View>
-          
+
           <Image
             source={require('../assets/route-map.png')}
             style={styles.routeMapImage}

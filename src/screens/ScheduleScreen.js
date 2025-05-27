@@ -1,3 +1,4 @@
+// src/screens/ScheduleScreen.js - 업데이트된 버전
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -12,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, SHADOWS, SPACING } from '../constants/theme';
 import BottomTabBar from '../components/BottomTabBar';
 import { Calendar } from 'react-native-calendars';
+import { ScheduleService } from '../services';
 
 const ScheduleScreen = ({ navigation }) => {
   const [schedules, setSchedules] = useState([]);
@@ -26,32 +28,45 @@ const ScheduleScreen = ({ navigation }) => {
 
   const loadSchedules = async () => {
     try {
-      const scheduleData = await getDriveSchedules();
+      const scheduleData = await ScheduleService.getDriveSchedules();
       setSchedules(scheduleData);
-      
-      // Mark dates with schedules on calendar
-      const marked = {};
-      scheduleData.forEach(schedule => {
-        // Extract date from schedule.departureTime (format: "yyyy년 MM월 dd일 HH:mm")
-        const dateMatch = schedule.departureTime.match(/(\d+)년 (\d+)월 (\d+)일/);
-        if (dateMatch) {
-          const year = dateMatch[1];
-          const month = dateMatch[2].padStart(2, '0');
-          const day = dateMatch[3].padStart(2, '0');
-          const dateStr = `${year}-${month}-${day}`;
-          
-          marked[dateStr] = { marked: true, dotColor: COLORS.primary };
-        }
-      });
-      
+
+      // Mark dates with schedules on calendar using ScheduleService helper
+      const marked = ScheduleService.createCalendarMarkedDates(scheduleData);
       setMarkedDates(marked);
-      
+
       // Set today as default selected date
       const today = new Date();
       const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
       setSelectedDate(todayStr);
     } catch (error) {
-      console.error('Error loading schedules:', error);
+      console.error('[ScheduleScreen] 일정 로드 오류:', error);
+
+      // 오류 시 더미 데이터 사용
+      const dummySchedules = [
+        {
+          id: '1',
+          busNumber: '101번',
+          route: '동부캠퍼스 - 서부캠퍼스',
+          departureTime: '2025년 05월 27일 14:00',
+          arrivalTime: '16:00',
+        },
+        {
+          id: '2',
+          busNumber: '102번',
+          route: '서부캠퍼스 - 동부캠퍼스',
+          departureTime: '2025년 05월 27일 18:00',
+          arrivalTime: '20:00',
+        },
+      ];
+
+      setSchedules(dummySchedules);
+
+      // 더미 데이터용 마킹
+      const today = new Date();
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      setMarkedDates({ [todayStr]: { marked: true, dotColor: COLORS.primary } });
+      setSelectedDate(todayStr);
     }
   };
 
@@ -61,13 +76,20 @@ const ScheduleScreen = ({ navigation }) => {
     setRefreshing(false);
   };
 
-  const handleDateSelect = (day) => {
+  const handleDateSelect = async (day) => {
     setSelectedDate(day.dateString);
+
+    try {
+      const dateSchedules = await ScheduleService.getSchedulesByDate(day.dateString);
+      // 필요시 특정 날짜 일정만 표시하도록 상태 관리 추가 가능
+    } catch (error) {
+      console.error('[ScheduleScreen] 날짜별 일정 조회 오류:', error);
+    }
   };
 
   const handleTabPress = (tabId) => {
     setActiveBottomTab(tabId);
-    
+
     switch (tabId) {
       case 'home':
         navigation.navigate('Home');
@@ -144,7 +166,7 @@ const ScheduleScreen = ({ navigation }) => {
             <Text style={styles.sectionTitle}>
               {selectedDate ? selectedDate.replace(/-/g, '.') : '오늘'} 일정
             </Text>
-            
+
             {filteredSchedules.length > 0 ? (
               filteredSchedules.map((schedule) => (
                 <View key={schedule.id} style={styles.scheduleCard}>
@@ -154,7 +176,7 @@ const ScheduleScreen = ({ navigation }) => {
                       <Text style={styles.routeBadgeText}>운행 {schedule.id}</Text>
                     </View>
                   </View>
-                  
+
                   <View style={styles.scheduleInfo}>
                     <View style={styles.infoRow}>
                       <Text style={styles.infoLabel}>노선:</Text>
@@ -177,11 +199,11 @@ const ScheduleScreen = ({ navigation }) => {
               </View>
             )}
           </View>
-          
+
           {/* 하단 여백 */}
           <View style={styles.bottomPadding} />
         </ScrollView>
-        
+
         {/* 하단 탭 바 */}
         <BottomTabBar
           activeTab={activeBottomTab}

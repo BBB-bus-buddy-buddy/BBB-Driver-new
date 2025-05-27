@@ -1,4 +1,4 @@
-// src/screens/StartDriveScreen.js
+// src/screens/StartDriveScreen.js 
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, SHADOWS, SPACING } from '../constants/theme';
-import { startDrive } from '../services/driveService';
+import { DriveService } from '../services';
 import { requestLocationPermission, getCurrentLocation, isUserAtLocation, getDepartureLocation } from '../services/locationService';
 
 const StartDriveScreen = ({ navigation, route }) => {
@@ -26,14 +26,14 @@ const StartDriveScreen = ({ navigation, route }) => {
       try {
         // 위치 권한 요청
         const hasPermission = await requestLocationPermission();
-        
+
         if (hasPermission) {
           // 시뮬레이션을 위한 카운트다운
           let timer = setInterval(() => {
             setCountdown((prevCount) => {
               if (prevCount <= 1) {
                 clearInterval(timer);
-                
+
                 // 실제로는 현재 위치와 출발 위치를 비교해야 함
                 // 시뮬레이션을 위해 항상 위치가 확인되었다고 가정
                 setLoading(false);
@@ -43,7 +43,7 @@ const StartDriveScreen = ({ navigation, route }) => {
               return prevCount - 1;
             });
           }, 1000);
-          
+
           return () => clearInterval(timer);
         } else {
           setLoading(false);
@@ -54,7 +54,7 @@ const StartDriveScreen = ({ navigation, route }) => {
           );
         }
       } catch (error) {
-        console.error('Error checking location:', error);
+        console.error('[StartDriveScreen] 위치 확인 오류:', error);
         setLoading(false);
         Alert.alert(
           '오류',
@@ -70,15 +70,15 @@ const StartDriveScreen = ({ navigation, route }) => {
   const handleStartDrive = async () => {
     try {
       setLoading(true);
-      
-      // 운행 시작 처리
-      const activeDrive = await startDrive(drive);
-      
+
+      const activeDrive = await DriveService.startDrive(drive);
+
       // 운행 중 화면으로 이동
       navigation.replace('Driving', { drive: activeDrive });
     } catch (error) {
       setLoading(false);
-      Alert.alert('오류', '운행을 시작할 수 없습니다. 다시 시도해주세요.');
+      console.error('[StartDriveScreen] 운행 시작 오류:', error);
+      Alert.alert('오류', error.message || '운행을 시작할 수 없습니다. 다시 시도해주세요.');
     }
   };
 
@@ -121,10 +121,10 @@ const StartDriveScreen = ({ navigation, route }) => {
               {loading
                 ? `출발 위치 확인 중 (${countdown}초)`
                 : locationConfirmed
-                ? '출발 위치 확인 완료!'
-                : '출발 위치가 다릅니다'}
+                  ? '출발 위치 확인 완료!'
+                  : '출발 위치가 다릅니다'}
             </Text>
-            
+
             {loading ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color={COLORS.primary} />

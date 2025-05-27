@@ -1,4 +1,4 @@
-// src/screens/LoginScreen.js - useNavigation 추가 및 navigate로 변경
+// src/screens/LoginScreen.js - 업데이트된 버전
 import React, { useState } from 'react';
 import {
   View,
@@ -11,7 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native'; // useNavigation 추가
+import { useNavigation } from '@react-navigation/native';
 import {
   COLORS,
   FONT_SIZE,
@@ -21,8 +21,8 @@ import {
   SPACING,
 } from '../constants/theme';
 import InAppBrowser from 'react-native-inappbrowser-reborn';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import apiClient from '../api/apiClient';
+import { AuthService } from '../services';
+import { authAPI } from '../api';
 
 // 플랫폼별 상수 정의
 const PLATFORM_CONSTANTS = {
@@ -37,7 +37,6 @@ const LoginScreen = () => {
   const [loading, setLoading] = useState(false);
   const navigation = useNavigation();
 
-  
   const handleGoogleSignIn = async () => {
     try {
       console.log(`[LoginScreen] Google 로그인 시작 (플랫폼: ${Platform.OS})`);
@@ -71,13 +70,12 @@ const LoginScreen = () => {
         
         console.log('[LoginScreen] 토큰 받음, 저장 중');
         
-        // 토큰 저장
-        await AsyncStorage.setItem('token', token);
+        // 🔄 NEW: AuthService 사용하여 토큰 저장
+        await AuthService.setToken(token);
         
         // 토큰 저장 후 사용자 정보 가져오기
-        apiClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        const userResponse = await apiClient.get(`/api/auth/user`);
-        console.log(`[LoginScreen] 사용자 상세 정보 = ${JSON.stringify(userResponse.data,null,2)}`);
+        const userResponse = await authAPI.getUser();
+        console.log(`[LoginScreen] 사용자 상세 정보 = ${JSON.stringify(userResponse.data, null, 2)}`);
         const userInfo = userResponse.data?.data;
         console.log(`[LoginScreen] 사용자 역할 = ${userInfo.role}`);
         
@@ -86,8 +84,9 @@ const LoginScreen = () => {
           throw new Error('사용자 정보를 가져올 수 없습니다.');
         }
         
-        // 사용자 정보 저장
-        await AsyncStorage.setItem('userInfo', JSON.stringify(userInfo));
+        // 🔄 NEW: AuthService를 통한 사용자 정보 저장
+        const currentUser = await AuthService.getCurrentUser();
+        await AuthService.updateUserProfile(userInfo);
         console.log('[LoginScreen] 사용자 정보 저장 완료:', userInfo.email);
                 
         // 역할에 따른 화면 이동 - navigate 사용
@@ -159,7 +158,6 @@ const LoginScreen = () => {
   );
 };
 
-// styles는 그대로 유지...
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,

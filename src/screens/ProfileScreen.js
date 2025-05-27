@@ -13,8 +13,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, SHADOWS, SPACING } from '../constants/theme';
 import BottomTabBar from '../components/BottomTabBar';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import apiClient from '../api/apiClient';
+import { AuthService } from '../services';
+import { driverAPI } from '../api';
 
 const ProfileScreen = ({ navigation }) => {
   const [userInfo, setUserInfo] = useState(null);
@@ -31,12 +31,10 @@ const ProfileScreen = ({ navigation }) => {
     const getUserInfo = async () => {
       try {
         setLoading(true);
-        
-        const storedUserInfo = await AsyncStorage.getItem('userInfo');
+        const storedUserInfo = await AuthService.getCurrentUser();
         if (storedUserInfo) {
-          const parsedUserInfo = JSON.parse(storedUserInfo);
-          setUserInfo(parsedUserInfo);
-          console.log('[ProfileScreen] 저장된 사용자 정보 로드:', parsedUserInfo.email);
+          setUserInfo(storedUserInfo);
+          console.log('[ProfileScreen] 저장된 사용자 정보 로드:', storedUserInfo.email);
         } else {
           // 저장된 사용자 정보가 없으면 로그인 화면으로 이동
           console.error('[ProfileScreen] 저장된 사용자 정보 없음');
@@ -47,7 +45,7 @@ const ProfileScreen = ({ navigation }) => {
         
         // 운행 통계 정보 로드 (API 호출)
         try {
-          const statsResponse = await apiClient.get('/api/user/stats');
+          const statsResponse = await driverAPI.getUserStats();
           if (statsResponse.data?.data) {
             setDrivingStats(statsResponse.data.data);
           }
@@ -100,25 +98,20 @@ const ProfileScreen = ({ navigation }) => {
           onPress: async () => {
             try {
               setLoading(true);
+              const result = await AuthService.logout();
               
-              // API 호출로 로그아웃 처리
-              await apiClient.post('/api/auth/logout');
-              
-              // 로컬 스토리지 정리
-              await AsyncStorage.removeItem('token');
-              await AsyncStorage.removeItem('userInfo');
-              await AsyncStorage.removeItem('hasAdditionalInfo');
-              
-              // 로그인 화면으로 이동
-              navigation.replace('Login');
+              if (result.success) {
+                // 로그인 화면으로 이동
+                navigation.replace('Login');
+              } else {
+                // 실패해도 로그인 화면으로 이동 (로컬 데이터는 정리됨)
+                navigation.replace('Login');
+              }
             } catch (error) {
               console.error('[ProfileScreen] 로그아웃 오류:', error);
               
               // API 오류가 발생해도 로컬 스토리지 정리 후 로그인 화면으로 이동
-              await AsyncStorage.removeItem('token');
-              await AsyncStorage.removeItem('userInfo');
-              await AsyncStorage.removeItem('hasAdditionalInfo');
-              
+              await AuthService.clearUserData();
               navigation.replace('Login');
             }
           },

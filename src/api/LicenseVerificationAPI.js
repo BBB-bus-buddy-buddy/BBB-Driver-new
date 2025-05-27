@@ -1,4 +1,4 @@
-import apiClient from './apiClient';
+import apiClient from './client';
 
 // 상수 정의(백엔드에서도 정의 되어 있음)
 const ORGANIZATION_CODE = "0001"; // 고정값

@@ -1,6 +1,6 @@
-// src/api/apiClient.js
+// src/api/client.js
 import axios from 'axios';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { storage } from '../utils/storage';
 import { API_URL_PROD, API_URL_LOCAL, API_TIMEOUT } from '@env';
 
 // axios 인스턴스 생성
@@ -16,17 +16,18 @@ const apiClient = axios.create({
 apiClient.interceptors.request.use(
   async (config) => {
     try {
-      const token = await AsyncStorage.getItem('token');
-      console.log(`[apiClient] token = ${token}`);
+      const token = await storage.getToken();
+      console.log(`[API Client] Request to ${config.url}, token exists: ${!!token}`);
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
     } catch (error) {
-      console.error('토큰 가져오기 오류:', error);
+      console.error('[API Client] 토큰 가져오기 오류:', error);
     }
     return config;
   },
   (error) => {
+    console.error('[API Client] 요청 인터셉터 오류:', error);
     return Promise.reject(error);
   }
 );
@@ -34,25 +35,26 @@ apiClient.interceptors.request.use(
 // 응답 인터셉터 - 401 에러 처리
 apiClient.interceptors.response.use(
   (response) => {
+    console.log(`[API Client] Response from ${response.config.url}: ${response.status}`);
     return response;
   },
   async (error) => {
+    console.error(`[API Client] Response error from ${error.config?.url}:`, error.response?.status);
+    
     // 토큰 만료 등으로 인한 인증 실패
     if (error.response && error.response.status === 401) {
-      console.log('인증 오류: 토큰이 만료되었거나 유효하지 않습니다.');
+      console.log('[API Client] 401 인증 오류 발생 - 토큰 삭제');
       
       // 로컬 스토리지에서 인증 관련 항목 제거
       try {
-        await AsyncStorage.removeItem('token');
-        await AsyncStorage.removeItem('userInfo');
-        await AsyncStorage.removeItem('hasAdditionalInfo');
+        await storage.clearUserData();
       } catch (storageError) {
-        console.error('AsyncStorage 오류:', storageError);
+        console.error('[API Client] 스토리지 정리 오류:', storageError);
       }
       
-      // 로그인 페이지로 리다이렉트는 앱 레벨에서 처리해야 함
-      // Navigation은 여기서 접근할 수 없으므로 이벤트나 콜백을 통해 처리해야 함
+      // 401 에러는 서비스 레이어에서 처리하도록 그대로 전파
     }
+    
     return Promise.reject(error);
   }
 );

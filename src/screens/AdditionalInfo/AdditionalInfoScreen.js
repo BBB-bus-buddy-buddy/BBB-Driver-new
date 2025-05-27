@@ -1,4 +1,4 @@
-// src/screens/AdditionalInfo/index.js
+// src/screens/AdditionalInfo/AdditionalInfoScreen.js - 업데이트된 버전
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
@@ -7,16 +7,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS, FONT_SIZE, FONT_WEIGHT, SPACING } from '../../constants/theme';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import apiClient from '../../api/apiClient';
-
-// API 관련 임포트
-import {
-  verifyDriverLicense,
-  prepareVerificationData,
-  verifyAndRankUpDriver
-} from '../../api/LicenseVerificationAPI';
-import { verifyOrganizationCode } from '../../api/organizationApi';
+import { ValidationService, AuthService } from '../../services';
+import { apiClient } from '../../api';
+import { storage } from '../../utils/storage';
 
 // 유효성 검증 관련 임포트
 import { validateStep2, validateStep3, validateAllInputs } from './validation';
@@ -84,11 +77,11 @@ const AdditionalInfoScreen = () => {
   useEffect(() => {
     const getUserInfo = async () => {
       try {
-        const storedUserInfo = await AsyncStorage.getItem('userInfo');
+        // storage 헬퍼 사용
+        const storedUserInfo = await storage.getUserInfo();
 
         if (storedUserInfo) {
-          const parsedUserInfo = JSON.parse(storedUserInfo);
-          setUserInfo(parsedUserInfo);
+          setUserInfo(storedUserInfo);
         } else {
           Alert.alert('오류', '사용자 정보를 찾을 수 없습니다. 다시 로그인해주세요.');
           navigation.navigate('Login');
@@ -112,12 +105,14 @@ const AdditionalInfoScreen = () => {
 
     try {
       setVerifyingCode(true);
-      const response = await verifyOrganizationCode(organizationCode);
+
+      // ValidationService 사용
+      const response = await ValidationService.verifyOrganization(organizationCode);
 
       if (response.success) {
         // 성공적으로 조직 코드가 검증됨
         setVerificationStatus({ ...verificationStatus, organizationVerified: true });
-        
+
         // 조직 코드 저장
         if (response.data) {
           setOrganizatinCode(response.data)
@@ -148,7 +143,8 @@ const AdditionalInfoScreen = () => {
     try {
       setLoading(true);
 
-      const verificationData = prepareVerificationData({
+      // ValidationService 사용 (prepareVerificationData는 API에서 처리)
+      const licenseVerificationData = {
         userName: userData.userName,
         identity: userData.identity,
         phoneNo: userData.phoneNumber,
@@ -158,9 +154,9 @@ const AdditionalInfoScreen = () => {
         licenseUnique: licenseData.licenseUnique,
         licenseClass: licenseData.licenseClass,
         serialNo: licenseData.serialNo
-      });
+      };
 
-      const result = await verifyDriverLicense(verificationData);
+      const result = await ValidationService.verifyLicense(licenseVerificationData);
 
       if (result.success) {
         setVerificationStatus({ ...verificationStatus, licenseVerified: true });
@@ -191,7 +187,6 @@ const AdditionalInfoScreen = () => {
 
     try {
       const formData = {
-
         // 개인 정보
         userName: userData.userName,
         identity: userData.identity.replace(/-/g, ''),
@@ -211,15 +206,17 @@ const AdditionalInfoScreen = () => {
         telecom: "2"
       };
 
-      const response = await verifyAndRankUpDriver(formData);
+      // ValidationService 사용
+      const response = await ValidationService.verifyAndRankUp(formData);
 
       if (response.success) {
-        await AsyncStorage.setItem('hasAdditionalInfo', 'true');
+        // storage 헬퍼 사용
+        await storage.setHasAdditionalInfo(true);
 
         // 사용자 정보 업데이트
         const userResponse = await apiClient.get('/api/auth/user');
         if (userResponse.data?.data) {
-          await AsyncStorage.setItem('userInfo', JSON.stringify(userResponse.data.data));
+          await storage.setUserInfo(userResponse.data.data);
         }
 
         Alert.alert(
@@ -241,11 +238,9 @@ const AdditionalInfoScreen = () => {
   // 로그아웃 및 로그인 화면으로 이동
   const goBack = async () => {
     try {
-      await AsyncStorage.removeItem('token');
-      await AsyncStorage.removeItem('userInfo');
-      await AsyncStorage.removeItem('hasAdditionalInfo');
+      await AuthService.clearUserData();
     } catch (error) {
-      console.error('AsyncStorage 오류:', error);
+      console.error('데이터 정리 오류:', error);
     }
 
     navigation.navigate("Login");

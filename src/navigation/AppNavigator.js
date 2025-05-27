@@ -12,9 +12,10 @@ import ScheduleScreen from '../screens/ScheduleScreen';
 import MessageScreen from '../screens/MessageScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import AdditionalInfoScreen from '../screens/AdditionalInfo/AdditionalInfoScreen';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '../constants/theme';
-import { syncUserInfo, clearUserData } from '../services/userService';
+
+import { AuthService } from '../services/authService';
+import AdditionalInfoBeta from '../screens/AdditionalInfoBeta/AdditioncalInfoBeta';
 
 const Stack = createStackNavigator();
 
@@ -27,69 +28,65 @@ const AppNavigator = () => {
     const checkAuthStatus = async () => {
       try {
         console.log('[AppNavigator] 앱 초기화 및 인증 상태 확인 중');
-        
-        const storedToken = await AsyncStorage.getItem('token');
-        
-        if (storedToken) {
-          console.log('[AppNavigator] 토큰 발견, 사용자 정보 동기화 중');
-          
-          // 사용자 정보 동기화
-          const syncResult = await syncUserInfo();
-          
-          if (syncResult.success && syncResult.userInfo) {
-            console.log('[AppNavigator] 동기화 성공, 역할:', syncResult.userInfo.role);
-            
-            // 역할에 따른 초기 화면 설정
-            if (syncResult.userInfo.role === 'ROLE_GUEST') {
-              console.log('[AppNavigator] 게스트 사용자, 추가 정보 필요');
-              setInitialRouteName('AdditionalInfo');
-            } else {
-              console.log('[AppNavigator] 인증된 사용자, 홈 화면으로 이동');
-              setInitialRouteName('Home');
-            }
-            
-            // 사용자 정보 변경 감지
-            if (syncResult.hasChanges) {
-              console.log('[AppNavigator] 사용자 정보 변경 감지됨');
-              
-              // 백그라운드에서 역할이 변경된 경우 알림
-              const previousRole = await AsyncStorage.getItem('previousRole');
-              if (previousRole && previousRole !== syncResult.userInfo.role) {
-                if (previousRole === 'ROLE_GUEST' && syncResult.userInfo.role === 'ROLE_DRIVER') {
-                  Alert.alert(
-                    '권한 승인',
-                    '운전자 권한이 승인되었습니다!',
-                    [{ text: '확인' }]
-                  );
-                }
+
+        const token = await AuthService.getToken();
+
+        if (!token) {
+          console.log('[AppNavigator] 토큰 없음, 로그인 화면으로 이동');
+          setInitialRouteName('Login');
+          return;
+        }
+
+        console.log('[AppNavigator] 토큰 발견, 사용자 정보 동기화 중...');
+
+        const syncResult = await AuthService.syncUserInfo();
+
+        if (syncResult.success && syncResult.userInfo) {
+          console.log('[AppNavigator] 동기화 성공, 역할:', syncResult.userInfo.role);
+
+          // 역할에 따른 초기 화면 설정
+          if (syncResult.userInfo.role === 'ROLE_GUEST') {
+            console.log('[AppNavigator] 게스트 사용자, 추가 정보 필요');
+            setInitialRouteName('AdditionalInfo');
+          } else {
+            console.log('[AppNavigator] 인증된 사용자, 홈 화면으로 이동');
+            setInitialRouteName('Home');
+          }
+
+          // 사용자 정보 변경 감지
+          if (syncResult.hasChanges) {
+            console.log('[AppNavigator] 사용자 정보 변경 감지됨');
+
+            // 백그라운드에서 역할이 변경된 경우 알림
+            const previousUserInfo = await AuthService.getCurrentUser();
+            if (previousUserInfo && previousUserInfo.role !== syncResult.userInfo.role) {
+              if (previousUserInfo.role === 'ROLE_GUEST' && syncResult.userInfo.role === 'ROLE_DRIVER') {
+                Alert.alert(
+                  '권한 승인',
+                  '운전자 권한이 승인되었습니다!',
+                  [{ text: '확인' }]
+                );
               }
-              
-              // 현재 역할 저장
-              await AsyncStorage.setItem('previousRole', syncResult.userInfo.role);
-            }
-          } else if (syncResult.needsLogin) {
-            // 인증 실패 또는 토큰 만료
-            console.log('[AppNavigator] 인증 실패, 로그인 필요');
-            await clearUserData();
-            setInitialRouteName('Login');
-          } else if (syncResult.isOffline) {
-            // 오프라인 모드 - 로컬 정보로 진행
-            console.log('[AppNavigator] 오프라인 모드, 로컬 정보 사용');
-            if (syncResult.userInfo) {
-              setInitialRouteName(syncResult.userInfo.role === 'ROLE_GUEST' ? 'AdditionalInfo' : 'Home');
-            } else {
-              setInitialRouteName('Login');
             }
           }
-        } else {
-          console.log('[AppNavigator] 토큰 없음, 로그인 필요');
-          await clearUserData();
+        } else if (syncResult.needsLogin) {
+          // 인증 실패 또는 토큰 만료
+          console.log('[AppNavigator] 인증 실패, 로그인 필요');
+          await AuthService.clearUserData();
           setInitialRouteName('Login');
+        } else if (syncResult.isOffline) {
+          // 오프라인 모드 - 로컬 정보로 진행
+          console.log('[AppNavigator] 오프라인 모드, 로컬 정보 사용');
+          if (syncResult.userInfo) {
+            setInitialRouteName(syncResult.userInfo.role === 'ROLE_GUEST' ? 'AdditionalInfo' : 'Home');
+          } else {
+            setInitialRouteName('Login');
+          }
         }
       } catch (error) {
         console.error('[AppNavigator] 인증 상태 확인 오류:', error);
         setInitError('앱 초기화 중 오류가 발생했습니다. 다시 시도해주세요.');
-        await clearUserData();
+        await AuthService.clearUserData();
         setInitialRouteName('Login');
       } finally {
         setIsLoading(false);
@@ -134,12 +131,12 @@ const AppNavigator = () => {
   // 모든 화면을 포함하는 단일 스택 네비게이터
   return (
     <Stack.Navigator
-      screenOptions={{ headerShown: false }} 
+      screenOptions={{ headerShown: false }}
       initialRouteName={initialRouteName}
     >
       <Stack.Screen name="Splash" component={SplashScreen} />
       <Stack.Screen name="Login" component={LoginScreen} />
-      <Stack.Screen name="AdditionalInfo" component={AdditionalInfoScreen} />
+      <Stack.Screen name="AdditionalInfo" component={AdditionalInfoBeta} />
       <Stack.Screen name="Home" component={HomeScreen} />
       <Stack.Screen name="StartDrive" component={StartDriveScreen} />
       <Stack.Screen name="Driving" component={DrivingScreen} />

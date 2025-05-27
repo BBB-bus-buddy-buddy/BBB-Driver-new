@@ -21,11 +21,14 @@ import {
   SHADOWS,
   SPACING,
 } from '../constants/theme';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// 🔄 NEW: 새로운 Service 구조로 import 변경
+import { DriveService, NotificationService } from '../services';
+import { storage } from '../utils/storage';
+
 import DriveStatusCard from '../components/DriveStatusCard';
 import NotificationItem from '../components/NotificationItem';
 import BottomTabBar from '../components/BottomTabBar';
-import apiClient from '../api/apiClient';
 import { isTimeNearby } from '../utils/dateUtils';
 
 const HomeScreen = ({ navigation }) => {
@@ -45,13 +48,12 @@ const HomeScreen = ({ navigation }) => {
     const initializeData = async () => {
       try {
         setInitialLoading(true);
-        
-        // 저장된 사용자 정보 가져오기
-        const storedUserInfo = await AsyncStorage.getItem('userInfo');
+
+        // 🔄 NEW: storage 헬퍼 사용
+        const storedUserInfo = await storage.getUserInfo();
         if (storedUserInfo) {
-          const parsedUserInfo = JSON.parse(storedUserInfo);
-          setUserInfo(parsedUserInfo);
-          console.log('[HomeScreen] 저장된 사용자 정보 로드:', parsedUserInfo.email);
+          setUserInfo(storedUserInfo);
+          console.log('[HomeScreen] 저장된 사용자 정보 로드:', storedUserInfo.email);
         } else {
           // 저장된 사용자 정보가 없으면 로그인 화면으로 이동
           console.error('[HomeScreen] 저장된 사용자 정보 없음');
@@ -59,10 +61,10 @@ const HomeScreen = ({ navigation }) => {
           navigation.replace('Login');
           return;
         }
-        
+
         // 이후 다른 데이터 로드
         await loadData();
-        
+
       } catch (error) {
         console.error('[HomeScreen] 초기화 오류:', error);
         Alert.alert('오류', '정보를 불러올 수 없습니다. 다시 로그인해주세요.');
@@ -78,86 +80,34 @@ const HomeScreen = ({ navigation }) => {
   const loadData = async () => {
     try {
       setRefreshing(true);
-      
-      // 운행 일정 로드
+
+      // 🔄 NEW: DriveService 사용
       try {
-        const schedulesResponse = await apiClient.get('/api/routes');
-        if (schedulesResponse.data?.data) {
-          const schedules = schedulesResponse.data.data;
-          
-          // 버튼 활성화 여부 계산
-          const schedulesWithButtonStatus = schedules.map(schedule => ({
-            ...schedule,
-            isButtonActive: isTimeNearby(schedule.departureTime),
-          }));
-          
-          setDriveSchedules(schedulesWithButtonStatus);
-        } else {
-          // API 응답이 없을 경우 임시 데이터 사용
-          setDriveSchedules([
-            {
-              id: '1',
-              busNumber: '101번',
-              route: '동부캠퍼스 - 서부캠퍼스',
-              departureTime: '14:00',
-              arrivalTime: '16:00',
-              isButtonActive: true,
-            },
-          ]);
-        }
+        const schedules = await DriveService.getSchedules();
+
+        // 버튼 활성화 여부 계산
+        const schedulesWithButtonStatus = schedules.map(schedule => ({
+          ...schedule,
+          isButtonActive: isTimeNearby(schedule.departureTime),
+        }));
+
+        setDriveSchedules(schedulesWithButtonStatus);
       } catch (scheduleError) {
         console.error('[HomeScreen] 운행 일정 로드 오류:', scheduleError);
-        // 오류 발생 시 임시 데이터 사용
-        setDriveSchedules([
-          {
-            id: '1',
-            busNumber: '101번',
-            route: '동부캠퍼스 - 서부캠퍼스',
-            departureTime: '14:00',
-            arrivalTime: '16:00',
-            isButtonActive: true,
-          },
-        ]);
       }
 
-      // 알림 정보 로드
+      // NotificationService 사용
       try {
-        const notificationsResponse = await apiClient.get('/api/notifications');
-        if (notificationsResponse.data?.data) {
-          const notifs = notificationsResponse.data.data;
-          setNotifications(notifs);
-          
-          // 읽지 않은 알림 개수 계산
-          const unreadCount = notifs.filter(notification => notification.unread).length;
-          setUnreadNotifications(unreadCount);
-        } else {
-          // API 응답이 없을 경우 임시 데이터 사용
-          const dummyNotifications = [
-            {
-              id: '1',
-              message: '내일 운행 일정이 추가되었습니다.',
-              time: '오전 10:30',
-              unread: true,
-            },
-          ];
-          setNotifications(dummyNotifications);
-          setUnreadNotifications(1);
-        }
+        const notifs = await NotificationService.getNotifications();
+        setNotifications(notifs);
+
+        // 읽지 않은 알림 개수 계산
+        const unreadCount = notifs.filter(notification => notification.unread).length;
+        setUnreadNotifications(unreadCount);
       } catch (notificationError) {
         console.error('[HomeScreen] 알림 정보 로드 오류:', notificationError);
-        // 임시 데이터 사용
-        const dummyNotifications = [
-          {
-            id: '1',
-            message: '내일 운행 일정이 추가되었습니다.',
-            time: '오전 10:30',
-            unread: true,
-          },
-        ];
-        setNotifications(dummyNotifications);
-        setUnreadNotifications(1);
       }
-      
+
     } catch (error) {
       console.error('Error loading data:', error);
       Alert.alert('데이터 로드 오류', '정보를 불러오는 중 문제가 발생했습니다.');
@@ -175,8 +125,8 @@ const HomeScreen = ({ navigation }) => {
     const selectedDrive = driveSchedules.find(drive => drive.id === driveId);
 
     if (selectedDrive) {
-      // 운행 정보를 로컬 스토리지에 저장
-      await AsyncStorage.setItem('currentDrive', JSON.stringify(selectedDrive));
+      // storage 헬퍼 사용
+      await storage.setCurrentDrive(selectedDrive);
       // 운행 시작 화면으로 이동
       navigation.navigate('StartDrive', { drive: selectedDrive });
     } else {
@@ -216,20 +166,22 @@ const HomeScreen = ({ navigation }) => {
 
   const markNotificationsAsRead = async () => {
     try {
-      // API 호출로 읽음 처리
-      await apiClient.post('/api/notifications/mark-read');
-      
-      // 읽지 않은 알림을 모두 읽음 처리 (UI 업데이트)
-      const updatedNotifications = notifications.map(notification => ({
-        ...notification,
-        unread: false,
-      }));
+      // 🔄 NEW: NotificationService 사용
+      const result = await NotificationService.markAllAsRead();
 
-      setNotifications(updatedNotifications);
-      setUnreadNotifications(0);
+      if (result.success) {
+        // 읽지 않은 알림을 모두 읽음 처리 (UI 업데이트)
+        const updatedNotifications = notifications.map(notification => ({
+          ...notification,
+          unread: false,
+        }));
+
+        setNotifications(updatedNotifications);
+        setUnreadNotifications(0);
+      }
     } catch (error) {
       console.error('[HomeScreen] 알림 읽음 처리 오류:', error);
-      
+
       // API 호출 실패 시 로컬에서만 처리
       const updatedNotifications = notifications.map(notification => ({
         ...notification,

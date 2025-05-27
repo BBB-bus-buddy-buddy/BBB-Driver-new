@@ -1,4 +1,4 @@
-// src/screens/EndDriveScreen.js
+// src/screens/EndDriveScreen.js - 업데이트된 버전
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -10,19 +10,19 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, SHADOWS, SPACING } from '../constants/theme';
-import { getNextDriveSchedule } from '../services/driveService';
+import { DriveService } from '../services';
 
 const EndDriveScreen = ({ navigation, route }) => {
   const { drive } = route.params;
   const [hasNextDrive, setHasNextDrive] = useState(false);
   const [nextDrive, setNextDrive] = useState(null);
-  
+
   useEffect(() => {
-    // 다음 운행 일정 확인
+  // 다음 운행 일정 확인
     const checkNextDrive = async () => {
       try {
-        const nextDriveData = await getNextDriveSchedule(drive);
-        
+        const nextDriveData = await DriveService.getNextDriveSchedule(drive);
+
         if (nextDriveData) {
           setHasNextDrive(true);
           setNextDrive(nextDriveData);
@@ -30,11 +30,11 @@ const EndDriveScreen = ({ navigation, route }) => {
           setHasNextDrive(false);
         }
       } catch (error) {
-        console.log('Error checking next drive:', error);
+        console.log('[EndDriveScreen] 다음 운행 일정 확인 오류:', error);
         setHasNextDrive(false);
       }
     };
-    
+
     checkNextDrive();
   }, [drive]);
 
@@ -62,31 +62,31 @@ const EndDriveScreen = ({ navigation, route }) => {
 
         <View style={styles.driveInfoCard}>
           <Text style={styles.cardTitle}>운행 정보</Text>
-          
+
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>버스 번호</Text>
             <Text style={styles.infoValue}>{drive.busNumber}</Text>
           </View>
-          
+
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>노선</Text>
             <Text style={styles.infoValue}>{drive.route}</Text>
           </View>
-          
+
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>출발 시간</Text>
             <Text style={styles.infoValue}>
               {new Date(drive.startTime).toLocaleString('ko-KR')}
             </Text>
           </View>
-          
+
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>도착 시간</Text>
             <Text style={styles.infoValue}>
               {new Date(drive.endTime).toLocaleString('ko-KR')}
             </Text>
           </View>
-          
+
           <View style={styles.infoRowLast}>
             <Text style={styles.infoLabel}>운행 시간</Text>
             <Text style={styles.infoValue}>{drive.duration}</Text>
@@ -96,22 +96,22 @@ const EndDriveScreen = ({ navigation, route }) => {
         {hasNextDrive && nextDrive && (
           <View style={styles.nextDriveCard}>
             <Text style={styles.cardTitle}>다음 운행 정보</Text>
-            
+
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>버스 번호</Text>
               <Text style={styles.infoValue}>{nextDrive.busNumber}</Text>
             </View>
-            
+
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>노선</Text>
               <Text style={styles.infoValue}>{nextDrive.route}</Text>
             </View>
-            
+
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>출발 시간</Text>
               <Text style={styles.infoValue}>{nextDrive.departureTime}</Text>
             </View>
-            
+
             <View style={styles.infoRowLast}>
               <Text style={styles.infoLabel}>도착 예정</Text>
               <Text style={styles.infoValue}>{nextDrive.arrivalTime}</Text>
