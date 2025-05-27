@@ -132,35 +132,3 @@ export const isUserAtLocation = (
   
   return distance <= radiusInMeters;
 };
-
-/**
- * 출발 위치 정보 (백엔드 연동 전 임시 데이터)
- * @param {number} busId - 버스 ID
- * @returns {Object} 출발 위치 좌표
- */
-export const getDepartureLocation = (busId) => {
-  // 백엔드 연동 전 임시 데이터
-  const locations = {
-    101: { latitude: 37.5665, longitude: 126.9780 }, // 서울역
-    201: { latitude: 37.5445, longitude: 127.0557 }, // 동부캠퍼스 예시
-    default: { latitude: 37.5665, longitude: 126.9780 } // 기본값
-  };
-  
-  return locations[busId] || locations.default;
-};
-
-/**
- * 도착 위치 정보 (백엔드 연동 전 임시 데이터)
- * @param {number} busId - 버스 ID
- * @returns {Object} 도착 위치 좌표
- */
-export const getDestinationLocation = (busId) => {
-  // 백엔드 연동 전 임시 데이터
-  const locations = {
-    101: { latitude: 37.5445, longitude: 127.0557 }, // 동부캠퍼스 예시
-    201: { latitude: 37.5665, longitude: 126.9780 }, // 서울역
-    default: { latitude: 37.5445, longitude: 127.0557 } // 기본값
-  };
-  
-  return locations[busId] || locations.default;
-};
