@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, SHADOWS, SPACING } from '../constants/theme';
-import { DriveService } from '../services';
+import { DriveService } from '../services/driveService';
 import { startLocationTracking, stopLocationTracking } from '../services/locationService';
 
 const DrivingScreen = ({ navigation, route }) => {

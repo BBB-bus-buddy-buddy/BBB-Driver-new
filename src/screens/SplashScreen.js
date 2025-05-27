@@ -3,7 +3,7 @@ import React, { useEffect } from 'react';
 import { View, Text, Image, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS, FONT_SIZE, FONT_WEIGHT } from '../constants/theme';
-import { AuthService } from '../services';
+import { AuthService } from '../services/authService';
 
 const SplashScreen = () => {
   const navigation = useNavigation();
