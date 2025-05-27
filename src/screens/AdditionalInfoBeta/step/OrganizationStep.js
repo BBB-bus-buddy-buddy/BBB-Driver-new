@@ -1,7 +1,7 @@
 // src/screens/AdditionalInfoBeta/step/OrganizationStep.js
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { verifyOrganizationCode } from '../../../api/organizationApi';
+import { ValidationService } from '../../../services';
 import styles from '../styles';
 
 const OrganizationStep = ({
@@ -47,20 +47,21 @@ const OrganizationStep = ({
         }));
 
         try {
-            const result = await verifyOrganizationCode(driverInfo.organizationId.trim());
+            // ✅ ValidationService.verifyOrganization 사용
+            const result = await ValidationService.verifyOrganization(driverInfo.organizationId.trim());
 
             if (result.success) {
                 setVerificationState({
                     isVerifying: false,
                     isVerified: true,
-                    verificationMessage: result.message,
+                    verificationMessage: result.message || '유효한 조직 코드입니다.',
                     organizationData: result.data
                 });
             } else {
                 setVerificationState({
                     isVerifying: false,
                     isVerified: false,
-                    verificationMessage: result.message,
+                    verificationMessage: result.message || '유효하지 않은 조직 코드입니다.',
                     organizationData: null
                 });
             }
