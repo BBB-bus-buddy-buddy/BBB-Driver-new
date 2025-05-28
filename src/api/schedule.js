@@ -1,34 +1,34 @@
-// src/api/routes.js
+// src/api/schedules.js
 import apiClient from './client';
 
-export const routesAPI = {
-  /**
+export const scheduleAPI = {
+  /**GET
    * 전체 운행 일정 조회
    */
   getSchedules: () => {
-    return apiClient.get('/api/routes');
+    return apiClient.get('/api/schedules');
   },
 
-  /**
+  /**POST
    * 특정 날짜의 운행 일정 조회
    * @param {string} date 조회할 날짜 (YYYY-MM-DD)
    */
   getSchedulesByDate: (date) => {
-    return apiClient.get(`/api/routes/date/${date}`);
+    return apiClient.get(`/api/schedules/date/${date}`);
   },
 
   /**
    * 이번 주 운행 일정 조회
    */
   getWeeklySchedule: () => {
-    return apiClient.get('/api/routes/weekly');
+    return apiClient.get('/api/schedules/weekly');
   },
 
   /**
    * 이번 달 운행 일정 조회
    */
   getMonthlySchedule: () => {
-    return apiClient.get('/api/routes/monthly');
+    return apiClient.get('/api/schedules/monthly');
   },
 
   /**
@@ -36,7 +36,7 @@ export const routesAPI = {
    * @param {string} scheduleId 일정 ID
    */
   getScheduleDetail: (scheduleId) => {
-    return apiClient.get(`/api/routes/${scheduleId}`);
+    return apiClient.get(`/api/schedules/${scheduleId}`);
   },
 
   /**
@@ -45,6 +45,6 @@ export const routesAPI = {
    * @param {Object} data 변경 요청 데이터
    */
   requestScheduleChange: (scheduleId, data) => {
-    return apiClient.post(`/api/routes/${scheduleId}/change-request`, data);
+    return apiClient.post(`/api/schedules/${scheduleId}/change-request`, data);
   }
 };
