@@ -80,9 +80,7 @@ const HomeScreen = ({ navigation }) => {
   const loadData = async () => {
     try {
       setRefreshing(true);
-
-      // 🔄 NEW: DriveService 사용
-      try {
+      try { // 운행 일정 데이터 불러오기
         const schedules = await DriveService.getSchedules();
 
         // 버튼 활성화 여부 계산
@@ -95,9 +93,7 @@ const HomeScreen = ({ navigation }) => {
       } catch (scheduleError) {
         console.error('[HomeScreen] 운행 일정 로드 오류:', scheduleError);
       }
-
-      // NotificationService 사용
-      try {
+      try { // 알람 데이터 불러오기
         const notifs = await NotificationService.getNotifications();
         setNotifications(notifs);
 
