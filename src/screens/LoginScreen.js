@@ -23,6 +23,8 @@ import {
 import InAppBrowser from 'react-native-inappbrowser-reborn';
 import { AuthService } from '../services';
 import { authAPI } from '../api';
+import { storage } from '../utils/storage';
+
 
 // 플랫폼별 상수 정의
 const PLATFORM_CONSTANTS = {
@@ -42,53 +44,48 @@ const LoginScreen = () => {
       console.log(`[LoginScreen] Google 로그인 시작 (플랫폼: ${Platform.OS})`);
       setLoading(true);
 
-      // OAuth URL 및 리다이렉트 스킴 설정
       const authUrl = PLATFORM_CONSTANTS.OAUTH_URL;
       const redirectScheme = PLATFORM_CONSTANTS.REDIRECT_SCHEME;
-      
+
       console.log(`[LoginScreen] 인앱 브라우저 열기: ${authUrl}, 리다이렉트: ${redirectScheme}`);
 
-      // 인앱 브라우저를 통한 OAuth 인증 수행
       const result = await InAppBrowser.openAuth(authUrl, redirectScheme, {
         showTitle: false,
         enableUrlBarHiding: true,
         enableDefaultShare: false,
         ephemeralWebSession: false,
       });
-      
+
       if (result.type === 'success' && result.url) {
         console.log(`[LoginScreen] 인증 성공, 받은 URL: ${result.url}`);
-  
-        // URL에서 토큰 추출 (정규식 사용)
+
         const tokenMatch = result.url.match(/[?&]token=([^&]+)/);
         const token = tokenMatch ? tokenMatch[1] : null;
-        
+
         if (!token) {
           console.error('[LoginScreen] URL에서 토큰을 찾을 수 없음:', result.url);
           throw new Error('토큰을 받지 못했습니다.');
         }
-        
+
         console.log('[LoginScreen] 토큰 받음, 저장 중');
-        
-        // 🔄 NEW: AuthService 사용하여 토큰 저장
+
         await AuthService.setToken(token);
-        
+
         // 토큰 저장 후 사용자 정보 가져오기
         const userResponse = await authAPI.getUser();
         console.log(`[LoginScreen] 사용자 상세 정보 = ${JSON.stringify(userResponse.data, null, 2)}`);
         const userInfo = userResponse.data?.data;
         console.log(`[LoginScreen] 사용자 역할 = ${userInfo.role}`);
-        
+
         if (!userInfo) {
           console.error('[LoginScreen] 사용자 정보를 가져올 수 없음');
           throw new Error('사용자 정보를 가져올 수 없습니다.');
         }
-        
-        // 🔄 NEW: AuthService를 통한 사용자 정보 저장
-        const currentUser = await AuthService.getCurrentUser();
-        await AuthService.updateUserProfile(userInfo);
+
+        // ✅ 수정된 부분: storage를 직접 사용하여 사용자 정보 저장
+        await storage.setUserInfo(userInfo);
         console.log('[LoginScreen] 사용자 정보 저장 완료:', userInfo.email);
-                
+
         // 역할에 따른 화면 이동 - navigate 사용
         if (userInfo.role === 'ROLE_GUEST') {
           console.log('[LoginScreen] 게스트 유저, 추가 정보 화면으로 이동');
@@ -103,7 +100,7 @@ const LoginScreen = () => {
       }
     } catch (error) {
       console.error(`[LoginScreen] Google 로그인 오류: ${error}`);
-      
+
       if (error.message === '인증이 취소되었거나 실패했습니다.') {
         console.log('[LoginScreen] 로그인 취소됨');
       } else {
@@ -149,7 +146,7 @@ const LoginScreen = () => {
             )}
           </TouchableOpacity>
         </View>
-        
+
         <Text style={styles.infoText}>
           비회원이라면, 구글 로그인 후 자동으로 회원가입 화면으로 전환됩니다.
         </Text>
