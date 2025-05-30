@@ -1,5 +1,5 @@
 // src/services/scheduleService.js
-import { routesAPI } from '../api';
+import { scheduleAPI } from '../api';
 import { storage } from '../utils/storage';
 
 export class ScheduleService {
@@ -8,7 +8,7 @@ export class ScheduleService {
      */
     static async getDriveSchedules() {
         try {
-            const response = await routesAPI.getSchedules();
+            const response = await scheduleAPI.getSchedules();
 
             if (response.data?.data) {
                 // 캐시 저장
@@ -35,7 +35,7 @@ export class ScheduleService {
      */
     static async getSchedulesByDate(date) {
         try {
-            const response = await routesAPI.getSchedulesByDate(date);
+            const response = await scheduleAPI.getSchedulesByDate(date);
             return response.data?.data || [];
         } catch (error) {
             console.error('[ScheduleService] 날짜별 일정 조회 오류:', error);
@@ -61,7 +61,7 @@ export class ScheduleService {
      */
     static async getWeeklySchedule() {
         try {
-            const response = await routesAPI.getWeeklySchedule();
+            const response = await scheduleAPI.getWeeklySchedule();
             return response.data?.data || [];
         } catch (error) {
             console.error('[ScheduleService] 주간 일정 조회 오류:', error);
@@ -74,7 +74,7 @@ export class ScheduleService {
      */
     static async getMonthlySchedule() {
         try {
-            const response = await routesAPI.getMonthlySchedule();
+            const response = await scheduleAPI.getMonthlySchedule();
             return response.data?.data || [];
         } catch (error) {
             console.error('[ScheduleService] 월간 일정 조회 오류:', error);
@@ -87,7 +87,7 @@ export class ScheduleService {
      */
     static async getScheduleDetail(scheduleId) {
         try {
-            const response = await routesAPI.getScheduleDetail(scheduleId);
+            const response = await scheduleAPI.getScheduleDetail(scheduleId);
             return response.data?.data || null;
         } catch (error) {
             console.error('[ScheduleService] 일정 상세 조회 오류:', error);
@@ -100,7 +100,7 @@ export class ScheduleService {
      */
     static async requestScheduleChange(scheduleId, reason) {
         try {
-            const response = await routesAPI.requestScheduleChange(scheduleId, { reason });
+            const response = await scheduleAPI.requestScheduleChange(scheduleId, { reason });
             return {
                 success: true,
                 message: response.data?.message || '변경 요청이 전송되었습니다.'
@@ -111,6 +111,31 @@ export class ScheduleService {
                 success: false,
                 message: error.response?.data?.message || '변경 요청 중 오류가 발생했습니다.'
             };
+        }
+    }
+
+    /**
+     * 오늘의 운행 일정 조회
+     */
+    static async getTodaySchedules() {
+        try {
+            const response = await scheduleAPI.getTodaySchedules();
+            
+            if (response.data?.data) {
+                return response.data.data;
+            }
+
+            // API가 실패하면 전체 일정에서 오늘 날짜 필터링
+            const today = new Date();
+            const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+            return await this.getSchedulesByDate(todayStr);
+        } catch (error) {
+            console.error('[ScheduleService] 오늘 일정 조회 오류:', error);
+            
+            // 오류 시 전체 일정에서 오늘 날짜만 필터링
+            const today = new Date();
+            const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+            return await this.getSchedulesByDate(todayStr);
         }
     }
 
