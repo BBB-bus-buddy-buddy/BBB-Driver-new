@@ -22,14 +22,21 @@ import {
   SPACING,
 } from '../constants/theme';
 
-// 🔄 NEW: 새로운 Service 구조로 import 변경
-import { DriveService, NotificationService } from '../services';
+// 🔄 NEW: ScheduleService 사용
+import { ScheduleService, NotificationService } from '../services';
 import { storage } from '../utils/storage';
 
 import DriveStatusCard from '../components/DriveStatusCard';
 import NotificationItem from '../components/NotificationItem';
 import BottomTabBar from '../components/BottomTabBar';
 import { isTimeNearby } from '../utils/dateUtils';
+
+// 🆕 더미데이터 import 추가
+import { 
+  generateDummySchedules, 
+  getTodaySchedules, 
+  generateDummyNotifications 
+} from '../data/dummyScheduleData';
 
 const HomeScreen = ({ navigation }) => {
   const [userInfo, setUserInfo] = useState(null);
@@ -80,8 +87,22 @@ const HomeScreen = ({ navigation }) => {
   const loadData = async () => {
     try {
       setRefreshing(true);
+      
+      // 🆕 더미데이터 사용
+      const USE_DUMMY_DATA = true; // 백엔드 개발 완료 시 false로 변경
+      
       try { // 운행 일정 데이터 불러오기
-        const schedules = await DriveService.getSchedules();
+        let schedules;
+        
+        if (USE_DUMMY_DATA) {
+          // 더미데이터 생성
+          const allSchedules = generateDummySchedules();
+          schedules = getTodaySchedules(allSchedules);
+          console.log('[HomeScreen] 오늘의 더미 운행 일정:', schedules.length, '개');
+        } else {
+          // 실제 API 호출 - 오늘의 일정만 가져오기
+          schedules = await ScheduleService.getTodaySchedules();
+        }
 
         // 버튼 활성화 여부 계산
         const schedulesWithButtonStatus = schedules.map(schedule => ({
@@ -93,8 +114,19 @@ const HomeScreen = ({ navigation }) => {
       } catch (scheduleError) {
         console.error('[HomeScreen] 운행 일정 로드 오류:', scheduleError);
       }
+      
       try { // 알람 데이터 불러오기
-        const notifs = await NotificationService.getNotifications();
+        let notifs;
+        
+        if (USE_DUMMY_DATA) {
+          // 더미 알림 데이터 사용
+          notifs = generateDummyNotifications();
+          console.log('[HomeScreen] 더미 알림 데이터 로드:', notifs.length, '개');
+        } else {
+          // 실제 API 호출
+          notifs = await NotificationService.getNotifications();
+        }
+        
         setNotifications(notifs);
 
         // 읽지 않은 알림 개수 계산

@@ -15,6 +15,12 @@ import BottomTabBar from '../components/BottomTabBar';
 import { Calendar } from 'react-native-calendars';
 import { ScheduleService } from '../services';
 
+// 🆕 더미데이터 import 추가
+import { 
+  generateDummySchedules, 
+  getSchedulesByDate 
+} from '../data/dummyScheduleData';
+
 const ScheduleScreen = ({ navigation }) => {
   const [schedules, setSchedules] = useState([]);
   const [selectedDate, setSelectedDate] = useState('');
@@ -28,11 +34,48 @@ const ScheduleScreen = ({ navigation }) => {
 
   const loadSchedules = async () => {
     try {
-      const scheduleData = await ScheduleService.getDriveSchedules();
+      // 🆕 더미데이터 사용
+      const USE_DUMMY_DATA = true; // 백엔드 개발 완료 시 false로 변경
+      
+      let scheduleData;
+      
+      if (USE_DUMMY_DATA) {
+        // 더미데이터 생성
+        scheduleData = generateDummySchedules();
+        console.log('[ScheduleScreen] 더미 운행 일정 로드:', scheduleData.length, '개');
+      } else {
+        // 실제 API 호출
+        scheduleData = await ScheduleService.getDriveSchedules();
+      }
+      
       setSchedules(scheduleData);
 
-      // Mark dates with schedules on calendar using ScheduleService helper
-      const marked = ScheduleService.createCalendarMarkedDates(scheduleData);
+      // Mark dates with schedules on calendar
+      const marked = {};
+      scheduleData.forEach(schedule => {
+        const dateMatch = schedule.departureTime.match(/(\d+)년 (\d+)월 (\d+)일/);
+        if (dateMatch) {
+          const year = dateMatch[1];
+          const month = dateMatch[2].padStart(2, '0');
+          const day = dateMatch[3].padStart(2, '0');
+          const dateStr = `${year}-${month}-${day}`;
+          
+          if (!marked[dateStr]) {
+            marked[dateStr] = { 
+              marked: true, 
+              dotColor: COLORS.primary,
+              dots: []
+            };
+          }
+          
+          // 해당 날짜의 운행 횟수 표시
+          marked[dateStr].dots.push({
+            key: schedule.id,
+            color: COLORS.primary
+          });
+        }
+      });
+      
       setMarkedDates(marked);
 
       // Set today as default selected date
@@ -42,31 +85,9 @@ const ScheduleScreen = ({ navigation }) => {
     } catch (error) {
       console.error('[ScheduleScreen] 일정 로드 오류:', error);
 
-      // 오류 시 더미 데이터 사용
-      const dummySchedules = [
-        {
-          id: '1',
-          busNumber: '101번',
-          route: '동부캠퍼스 - 서부캠퍼스',
-          departureTime: '2025년 05월 27일 14:00',
-          arrivalTime: '16:00',
-        },
-        {
-          id: '2',
-          busNumber: '102번',
-          route: '서부캠퍼스 - 동부캠퍼스',
-          departureTime: '2025년 05월 27일 18:00',
-          arrivalTime: '20:00',
-        },
-      ];
-
-      setSchedules(dummySchedules);
-
-      // 더미 데이터용 마킹
-      const today = new Date();
-      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-      setMarkedDates({ [todayStr]: { marked: true, dotColor: COLORS.primary } });
-      setSelectedDate(todayStr);
+      // 오류 시 빈 데이터 설정
+      setSchedules([]);
+      setMarkedDates({});
     }
   };
 
@@ -80,8 +101,17 @@ const ScheduleScreen = ({ navigation }) => {
     setSelectedDate(day.dateString);
 
     try {
-      const dateSchedules = await ScheduleService.getSchedulesByDate(day.dateString);
-      // 필요시 특정 날짜 일정만 표시하도록 상태 관리 추가 가능
+      const USE_DUMMY_DATA = true; // 백엔드 개발 완료 시 false로 변경
+      
+      if (USE_DUMMY_DATA) {
+        // 더미데이터에서 특정 날짜 일정 필터링
+        const allSchedules = generateDummySchedules();
+        const dateSchedules = getSchedulesByDate(allSchedules, day.dateString);
+        console.log(`[ScheduleScreen] ${day.dateString} 일정:`, dateSchedules.length, '개');
+      } else {
+        // 실제 API 호출
+        const dateSchedules = await ScheduleService.getSchedulesByDate(day.dateString);
+      }
     } catch (error) {
       console.error('[ScheduleScreen] 날짜별 일정 조회 오류:', error);
     }
