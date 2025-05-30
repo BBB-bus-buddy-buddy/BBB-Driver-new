@@ -1,15 +1,16 @@
-// src/api/schedules.js
+// src/api/schedule.js
 import apiClient from './client';
 
 export const scheduleAPI = {
-  /**GET
+  /**
    * 전체 운행 일정 조회
+   * @param {Object} params 조회 파라미터
    */
-  getSchedules: () => {
-    return apiClient.get('/api/schedules');
+  getSchedules: (params = {}) => {
+    return apiClient.get('/api/schedules', { params });
   },
 
-  /**POST
+  /**
    * 특정 날짜의 운행 일정 조회
    * @param {string} date 조회할 날짜 (YYYY-MM-DD)
    */
@@ -18,17 +19,26 @@ export const scheduleAPI = {
   },
 
   /**
-   * 이번 주 운행 일정 조회
+   * 주간 운행 일정 조회
+   * @param {number} weekOffset 주 오프셋
    */
-  getWeeklySchedule: () => {
-    return apiClient.get('/api/schedules/weekly');
+  getWeeklySchedule: (weekOffset = 0) => {
+    return apiClient.get('/api/schedules/weekly', { 
+      params: { weekOffset } 
+    });
   },
 
   /**
-   * 이번 달 운행 일정 조회
+   * 월간 운행 일정 조회
+   * @param {number} year 연도
+   * @param {number} month 월
    */
-  getMonthlySchedule: () => {
-    return apiClient.get('/api/schedules/monthly');
+  getMonthlySchedule: (year, month) => {
+    const params = {};
+    if (year) params.year = year;
+    if (month) params.month = month;
+    
+    return apiClient.get('/api/schedules/monthly', { params });
   },
 
   /**
@@ -46,5 +56,21 @@ export const scheduleAPI = {
    */
   requestScheduleChange: (scheduleId, data) => {
     return apiClient.post(`/api/schedules/${scheduleId}/change-request`, data);
+  },
+
+  /**
+   * 오늘의 운행 일정 조회
+   */
+  getTodaySchedules: () => {
+    return apiClient.get('/api/schedules/today');
+  },
+
+  /**
+   * 운전자별 운행 일정 조회
+   * @param {string} driverId 운전자 ID
+   * @param {Object} params 조회 파라미터
+   */
+  getDriverSchedules: (driverId, params = {}) => {
+    return apiClient.get(`/api/schedules/driver/${driverId}`, { params });
   }
 };
