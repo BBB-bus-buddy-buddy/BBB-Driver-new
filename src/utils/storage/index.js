@@ -5,7 +5,7 @@
  * @description AsyncStorage 중앙 관리 시스템
  */
 
-import { StorageManager } from './StorageManager';
+import { StorageManager } from './storageManager';
 import { storageHelpers } from './helpers';
 
 // 싱글톤 인스턴스 생성
