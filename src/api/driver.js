@@ -8,14 +8,6 @@ const DEFAULT_LOGIN_TYPE_LEVEL = "1";
 
 export const driverAPI = {
   /**
-   * 운전면허 진위확인 API (기존 verifyDriverLicense)
-   * @param {Object} verificationData 검증 데이터
-   */
-  verifyLicense: (verificationData) => {
-    return apiClient.post('/api/driver/verify', verificationData);
-  },
-
-  /**
    * 조직 코드 검증 API (기존 verifyOrganizationCode)
    * @param {string} code 검증할 조직 코드
    */
@@ -48,18 +40,11 @@ export const driverAPI = {
   },
 
   /**
-   * 사용자 통계 조회
-   */
-  getUserStats: () => {
-    return apiClient.get('/api/user/stats');
-  },
-
-  /**
    * 사용자 프로필 업데이트
    * @param {Object} profileData 프로필 데이터
    */
   updateProfile: (profileData) => {
-    return apiClient.put('/api/user/profile', profileData);
+    return apiClient.put('/api/driver/profile', profileData);
   },
 
   /**
@@ -67,15 +52,30 @@ export const driverAPI = {
    * @param {Object} licenseData 면허 데이터
    */
   updateLicense: (licenseData) => {
-    return apiClient.put('/api/user/license', licenseData);
+    return apiClient.put('/api/driver/license', licenseData);
   },
 
   /**
-   * 면허 검증 상태 확인
+   * 운전면허 진위확인 API (프로젝트 MVP에 해당하지 않으므로 미사용 조치)
+   * @param {Object} verificationData 검증 데이터
    */
-  checkLicenseVerification: () => {
-    return apiClient.get('/api/user/license/verification-status');
-  }
+  // verifyLicense: (verificationData) => {
+  //   return apiClient.post('/api/driver/verify', verificationData);
+  // },
+
+  /**
+   * 사용자 통계 조회(프로젝트 MVP에 해당하지 않으므로 미사용 조치)
+   */
+  // getUserStats: () => {
+  //   return apiClient.get('/api/user/stats');
+  // },
+
+  /**
+   * 면허 검증 상태 확인 (프로젝트 MVP에 해당하지 않으므로 미사용 조치)
+   */
+  // checkLicenseVerification: () => {
+  //   return apiClient.get('/api/driver/license/verification-status');
+  // }
 };
 
 /**
