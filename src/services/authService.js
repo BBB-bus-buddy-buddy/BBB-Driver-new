@@ -308,41 +308,6 @@ export class AuthService {
   }
 
   /**
-   * 면허 정보 검증 상태 확인 (기존 checkLicenseVerification)
-   */
-  static async checkLicenseVerification() {
-    try {
-      const response = await driverAPI.checkLicenseVerification();
-
-      return {
-        success: true,
-        isVerified: response.data?.data?.isVerified || false,
-        verifiedAt: response.data?.data?.verifiedAt,
-        expiryDate: response.data?.data?.expiryDate
-      };
-    } catch (error) {
-      console.error('[AuthService] 면허 검증 상태 확인 오류:', error);
-
-      // 로컬 정보에서 확인
-      const user = await this.getCurrentUser();
-      if (user?.licenseInfo) {
-        return {
-          success: true,
-          isVerified: user.licenseInfo.isVerified || false,
-          verifiedAt: user.licenseInfo.verifiedAt,
-          expiryDate: user.licenseInfo.licenseExpiryDate,
-          isOffline: true
-        };
-      }
-
-      return {
-        success: false,
-        isVerified: false
-      };
-    }
-  }
-
-  /**
    * 로그인 상태 확인 (기존 isLoggedIn)
    */
   static async isLoggedIn() {
@@ -438,3 +403,39 @@ export class AuthService {
     return false;
   }
 }
+
+
+/** 
+   * 면허 정보 검증 상태 확인 (프로젝트 MVP에 해당하지 않으므로 미사용 조치)
+   */
+  // static async checkLicenseVerification() {
+  //   try {
+  //     const response = await driverAPI.checkLicenseVerification();
+
+  //     return {
+  //       success: true,
+  //       isVerified: response.data?.data?.isVerified || false,
+  //       verifiedAt: response.data?.data?.verifiedAt,
+  //       expiryDate: response.data?.data?.expiryDate
+  //     };
+  //   } catch (error) {
+  //     console.error('[AuthService] 면허 검증 상태 확인 오류:', error);
+
+  //     // 로컬 정보에서 확인
+  //     const user = await this.getCurrentUser();
+  //     if (user?.licenseInfo) {
+  //       return {
+  //         success: true,
+  //         isVerified: user.licenseInfo.isVerified || false,
+  //         verifiedAt: user.licenseInfo.verifiedAt,
+  //         expiryDate: user.licenseInfo.licenseExpiryDate,
+  //         isOffline: true
+  //       };
+  //     }
+
+  //     return {
+  //       success: false,
+  //       isVerified: false
+  //     };
+  //   }
+  // }
