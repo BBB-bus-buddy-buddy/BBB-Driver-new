@@ -13,17 +13,16 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, SHADOWS, SPACING } from '../constants/theme';
 import BottomTabBar from '../components/BottomTabBar';
-import { AuthService } from '../services';
-import { driverAPI } from '../api';
+import { AuthService, StatisticsService } from '../services';
 
 const ProfileScreen = ({ navigation }) => {
   const [userInfo, setUserInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeBottomTab, setActiveBottomTab] = useState('profile');
   const [drivingStats, setDrivingStats] = useState({
-    totalDrives: 42,
-    thisMonth: 8,
-    totalHours: 126,
+    totalDrives: 0,
+    thisMonth: 0,
+    totalHours: 0,
   });
 
   useEffect(() => {
@@ -43,16 +42,8 @@ const ProfileScreen = ({ navigation }) => {
           return;
         }
         
-        // 운행 통계 정보 로드 (API 호출)
-        try {
-          const statsResponse = await driverAPI.getUserStats();
-          if (statsResponse.data?.data) {
-            setDrivingStats(statsResponse.data.data);
-          }
-        } catch (statsError) {
-          console.error('[ProfileScreen] 운행 통계 로드 오류:', statsError);
-          // 오류 발생해도 기존 통계 정보 유지
-        }
+        // 운행 통계 정보 로드
+        await loadDrivingStats();
         
       } catch (error) {
         console.error('[ProfileScreen] 사용자 정보 로드 오류:', error);
@@ -65,6 +56,29 @@ const ProfileScreen = ({ navigation }) => {
 
     getUserInfo();
   }, [navigation]);
+
+  // 운행 통계 로드 함수
+  const loadDrivingStats = async () => {
+    try {
+      console.log('[ProfileScreen] 운행 통계 로드 중...');
+      
+      // StatisticsService 사용
+      const statsResponse = await StatisticsService.getUserStats();
+      
+      if (statsResponse.success && statsResponse.data) {
+        setDrivingStats(statsResponse.data);
+        console.log('[ProfileScreen] 운행 통계 로드 완료:', {
+          totalDrives: statsResponse.data.totalDrives,
+          thisMonth: statsResponse.data.thisMonth
+        });
+      } else {
+        throw new Error(statsResponse.message || '통계 데이터 조회 실패');
+      }
+    } catch (statsError) {
+      console.error('[ProfileScreen] 운행 통계 로드 오류:', statsError);
+      Alert.alert('통계 오류', '운행 통계를 불러올 수 없습니다.');
+    }
+  };
 
   const handleTabPress = (tabId) => {
     setActiveBottomTab(tabId);
@@ -123,6 +137,19 @@ const ProfileScreen = ({ navigation }) => {
     Alert.alert('안내', '프로필 편집 기능은 준비 중입니다.');
   };
 
+  // 운행 통계 새로고침 함수
+  const handleRefreshStats = async () => {
+    try {
+      setLoading(true);
+      await loadDrivingStats();
+    } catch (error) {
+      console.error('[ProfileScreen] 통계 새로고침 오류:', error);
+      Alert.alert('오류', '통계 정보를 새로고침할 수 없습니다.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // 로딩 중이면 로딩 화면 표시
   if (loading) {
     return (
@@ -140,6 +167,10 @@ const ProfileScreen = ({ navigation }) => {
       <View style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>프로필</Text>
+          {/* 새로고침 버튼 */}
+          <TouchableOpacity style={styles.refreshButton} onPress={handleRefreshStats}>
+            <Text style={styles.refreshButtonText}>새로고침</Text>
+          </TouchableOpacity>
         </View>
 
         <ScrollView style={styles.scrollView}>
@@ -177,6 +208,39 @@ const ProfileScreen = ({ navigation }) => {
               <View style={styles.statItem}>
                 <Text style={styles.statValue}>{drivingStats.totalHours}</Text>
                 <Text style={styles.statLabel}>총 운행 시간</Text>
+              </View>
+            </View>
+
+            {/* 추가 통계 정보 표시 */}
+            <View style={styles.additionalStatsContainer}>
+              <View style={styles.additionalStatRow}>
+                <View style={styles.additionalStatItem}>
+                  <Text style={styles.additionalStatValue}>{drivingStats.safetyScore.toFixed(1) || 0}</Text>
+                  <Text style={styles.additionalStatLabel}>안전 점수</Text>
+                </View>
+                <View style={styles.additionalStatItem}>
+                  <Text style={styles.additionalStatValue}>
+                    {drivingStats.onTimeRate !== undefined && drivingStats.onTimeRate.toFixed(1) !== null 
+                      ? drivingStats.onTimeRate.toFixed(1) 
+                      : '0.0'}%
+                  </Text>
+                  <Text style={styles.additionalStatLabel}>정시 운행률</Text>
+                </View>
+              </View>
+              
+              <View style={styles.additionalStatRow}>
+                <View style={styles.additionalStatItem}>
+                  <Text style={styles.additionalStatValue}>{drivingStats.totalDistance || 0}km</Text>
+                  <Text style={styles.additionalStatLabel}>총 운행 거리</Text>
+                </View>
+                <View style={styles.additionalStatItem}>
+                  <Text style={styles.additionalStatValue}>
+                    {drivingStats.customerRating !== undefined && drivingStats.customerRating !== null 
+                      ? drivingStats.customerRating.toFixed(1) 
+                      : '0.0'}
+                  </Text>
+                  <Text style={styles.additionalStatLabel}>고객 평점</Text>
+                </View>
               </View>
             </View>
           </View>
@@ -251,6 +315,8 @@ const styles = StyleSheet.create({
     color: COLORS.grey,
   },
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
     padding: SPACING.lg,
     backgroundColor: COLORS.white,
@@ -261,6 +327,19 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.xl,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.black,
+  },
+  // 새로고침 버튼 스타일
+  refreshButton: {
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  refreshButtonText: {
+    color: COLORS.primary,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: FONT_WEIGHT.medium,
   },
   scrollView: {
     flex: 1,
@@ -327,6 +406,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     borderRadius: BORDER_RADIUS.md,
     padding: SPACING.lg,
+    marginBottom: SPACING.md,
     ...SHADOWS.small,
   },
   statItem: {
@@ -347,6 +427,34 @@ const styles = StyleSheet.create({
     width: 1,
     height: '80%',
     backgroundColor: COLORS.divider,
+  },
+  // 추가 통계 컨테이너 스타일
+  additionalStatsContainer: {
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.lg,
+    ...SHADOWS.small,
+  },
+  additionalStatRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.sm,
+  },
+  additionalStatItem: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: SPACING.xs,
+  },
+  additionalStatValue: {
+    fontSize: FONT_SIZE.lg,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.black,
+    marginBottom: SPACING.xs,
+  },
+  additionalStatLabel: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.grey,
+    textAlign: 'center',
   },
   detailsSection: {
     padding: SPACING.lg,
