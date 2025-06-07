@@ -7,9 +7,6 @@ import {
   ScrollView,
   TouchableOpacity,
   RefreshControl,
-  Image,
-  Alert,
-  Modal,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,19 +20,17 @@ import {
 } from '../constants/theme';
 
 // 🔄 NEW: ScheduleService 사용
-import { ScheduleService, NotificationService } from '../services';
+import { ScheduleService } from '../services';
 import { storage } from '../utils/storage';
 
 import DriveStatusCard from '../components/DriveStatusCard';
-import NotificationItem from '../components/NotificationItem';
 import BottomTabBar from '../components/BottomTabBar';
 import { isTimeNearby } from '../utils/dateUtils';
 
 // 🆕 더미데이터 import 추가
 import { 
   generateDummySchedules, 
-  getTodaySchedules, 
-  generateDummyNotifications 
+  getTodaySchedules
 } from '../data/dummyScheduleData';
 
 const HomeScreen = ({ navigation }) => {
@@ -45,10 +40,7 @@ const HomeScreen = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [weather, setWeather] = useState({ temp: '23°C', condition: '맑음' });
-  const [notifications, setNotifications] = useState([]);
-  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [activeBottomTab, setActiveBottomTab] = useState('home');
-  const [notificationModalVisible, setNotificationModalVisible] = useState(false);
 
   // 화면 로드 시 초기 데이터 로드
   useEffect(() => {
@@ -114,27 +106,6 @@ const HomeScreen = ({ navigation }) => {
       } catch (scheduleError) {
         console.error('[HomeScreen] 운행 일정 로드 오류:', scheduleError);
       }
-      
-      try { // 알람 데이터 불러오기
-        let notifs;
-        
-        if (USE_DUMMY_DATA) {
-          // 더미 알림 데이터 사용
-          notifs = generateDummyNotifications();
-          console.log('[HomeScreen] 더미 알림 데이터 로드:', notifs.length, '개');
-        } else {
-          // 실제 API 호출
-          notifs = await NotificationService.getNotifications();
-        }
-        
-        setNotifications(notifs);
-
-        // 읽지 않은 알림 개수 계산
-        const unreadCount = notifs.filter(notification => notification.unread).length;
-        setUnreadNotifications(unreadCount);
-      } catch (notificationError) {
-        console.error('[HomeScreen] 알림 정보 로드 오류:', notificationError);
-      }
 
     } catch (error) {
       console.error('Error loading data:', error);
@@ -172,52 +143,11 @@ const HomeScreen = ({ navigation }) => {
       case 'schedule':
         navigation.navigate('Schedule');
         break;
-      case 'message':
-        navigation.navigate('Message');
-        break;
       case 'profile':
         navigation.navigate('Profile');
         break;
       default:
         break;
-    }
-  };
-
-  const toggleNotificationModal = () => {
-    setNotificationModalVisible(!notificationModalVisible);
-
-    // 모달이 열릴 때 알림을 읽음 처리
-    if (!notificationModalVisible) {
-      markNotificationsAsRead();
-    }
-  };
-
-  const markNotificationsAsRead = async () => {
-    try {
-      // 🔄 NEW: NotificationService 사용
-      const result = await NotificationService.markAllAsRead();
-
-      if (result.success) {
-        // 읽지 않은 알림을 모두 읽음 처리 (UI 업데이트)
-        const updatedNotifications = notifications.map(notification => ({
-          ...notification,
-          unread: false,
-        }));
-
-        setNotifications(updatedNotifications);
-        setUnreadNotifications(0);
-      }
-    } catch (error) {
-      console.error('[HomeScreen] 알림 읽음 처리 오류:', error);
-
-      // API 호출 실패 시 로컬에서만 처리
-      const updatedNotifications = notifications.map(notification => ({
-        ...notification,
-        unread: false,
-      }));
-
-      setNotifications(updatedNotifications);
-      setUnreadNotifications(0);
     }
   };
 
@@ -241,23 +171,6 @@ const HomeScreen = ({ navigation }) => {
             <Text style={styles.welcomeText}>안녕하세요,</Text>
             <Text style={styles.userName}>{userInfo?.name || '운전자'}님!</Text>
           </View>
-
-          {/* 알림 아이콘 */}
-          <TouchableOpacity
-            style={styles.notificationButton}
-            onPress={toggleNotificationModal}>
-            <Image
-              source={require('../assets/notification-icon.png')}
-              style={styles.notificationIcon}
-            />
-            {unreadNotifications > 0 && (
-              <View style={styles.notificationBadge}>
-                <Text style={styles.notificationBadgeText}>
-                  {unreadNotifications}
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
         </View>
 
         <ScrollView
@@ -323,43 +236,6 @@ const HomeScreen = ({ navigation }) => {
           <View style={styles.bottomPadding} />
         </ScrollView>
 
-        {/* 알림 모달 */}
-        <Modal
-          visible={notificationModalVisible}
-          transparent={true}
-          animationType="slide"
-          onRequestClose={toggleNotificationModal}>
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContainer}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>알림</Text>
-                <TouchableOpacity
-                  style={styles.closeButton}
-                  onPress={toggleNotificationModal}>
-                  <Text style={styles.closeButtonText}>닫기</Text>
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView style={styles.modalContent}>
-                {notifications.length > 0 ? (
-                  notifications.map(notification => (
-                    <NotificationItem
-                      key={notification.id}
-                      notification={notification}
-                    />
-                  ))
-                ) : (
-                  <View style={styles.emptyNotification}>
-                    <Text style={styles.emptyNotificationText}>
-                      알림이 없습니다.
-                    </Text>
-                  </View>
-                )}
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
-
         {/* 하단 탭 바 */}
         <BottomTabBar
           activeTab={activeBottomTab}
@@ -403,71 +279,6 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.xxl,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.black,
-  },
-  notificationButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.white,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...SHADOWS.small,
-  },
-  notificationIcon: {
-    width: 22,
-    height: 22,
-  },
-  notificationBadge: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: COLORS.error,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.white,
-  },
-  notificationBadgeText: {
-    color: COLORS.white,
-    fontSize: 10,
-    fontWeight: FONT_WEIGHT.bold,
-  },
-  weatherSection: {
-    paddingHorizontal: SPACING.lg,
-    marginBottom: SPACING.lg,
-  },
-  weatherCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.lg,
-    ...SHADOWS.small,
-  },
-  weatherTitle: {
-    fontSize: FONT_SIZE.md,
-    fontWeight: FONT_WEIGHT.semiBold,
-    color: COLORS.black,
-    marginBottom: SPACING.sm,
-  },
-  weatherInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  weatherIcon: {
-    width: 50,
-    height: 50,
-    marginRight: SPACING.md,
-  },
-  temperature: {
-    fontSize: FONT_SIZE.xxl,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.black,
-  },
-  weatherCondition: {
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.grey,
   },
   driveSection: {
     paddingHorizontal: SPACING.lg,
@@ -539,54 +350,6 @@ const styles = StyleSheet.create({
   },
   bottomPadding: {
     height: 70, // 바텀 탭 바 높이 + 여백
-  },
-
-  // 알림 모달 스타일
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContainer: {
-    backgroundColor: COLORS.white,
-    borderTopLeftRadius: BORDER_RADIUS.lg,
-    borderTopRightRadius: BORDER_RADIUS.lg,
-    paddingBottom: 20,
-    height: '70%', // 화면의 70% 높이
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: SPACING.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.divider,
-  },
-  modalTitle: {
-    fontSize: FONT_SIZE.xl,
-    fontWeight: FONT_WEIGHT.bold,
-    color: COLORS.black,
-  },
-  closeButton: {
-    padding: SPACING.sm,
-  },
-  closeButtonText: {
-    fontSize: FONT_SIZE.md,
-    color: COLORS.primary,
-    fontWeight: FONT_WEIGHT.medium,
-  },
-  modalContent: {
-    flex: 1,
-  },
-  emptyNotification: {
-    padding: SPACING.xl,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyNotificationText: {
-    fontSize: FONT_SIZE.md,
-    color: COLORS.grey,
-    textAlign: 'center',
   },
 });
 

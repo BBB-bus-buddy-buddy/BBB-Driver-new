@@ -1,5 +1,5 @@
 // src/constants/apiEndpoints.js
-import { API_URL_LOCAL, API_URL_PROD } from '@env';
+import { API_URL_LOCAL, API_URL_PROD, API_TIMEOUT } from '@env';
 
 /**
  * API 엔드포인트 중앙 관리
@@ -44,30 +44,6 @@ export const API_ENDPOINTS = {
     REQUEST_CHANGE: (scheduleId) => `${API_BASE}/schedules/${scheduleId}/change-request`,
     GET_TODAY: `${API_BASE}/schedules/today`,
     GET_BY_DRIVER: (driverId) => `${API_BASE}/schedules/driver/${driverId}`,
-  },
-
-  // Messages
-  MESSAGES: {
-    GET_ALL: `${API_BASE}/messages`,
-    GET_DETAIL: (messageId) => `${API_BASE}/messages/${messageId}`,
-    SEARCH: `${API_BASE}/messages/search`,
-    GET_UNREAD_COUNT: `${API_BASE}/messages/unread-count`,
-    MARK_AS_READ: (messageId) => `${API_BASE}/messages/${messageId}/read`,
-    DELETE: (messageId) => `${API_BASE}/messages/${messageId}`,
-    SEND_REPLY: (messageId) => `${API_BASE}/messages/${messageId}/reply`,
-    TOGGLE_IMPORTANT: (messageId) => `${API_BASE}/messages/${messageId}/important`,
-  },
-
-  // Notifications
-  NOTIFICATIONS: {
-    GET_ALL: `${API_BASE}/notifications`,
-    GET_UNREAD_COUNT: `${API_BASE}/notifications/unread-count`,
-    MARK_ALL_AS_READ: `${API_BASE}/notifications/mark-read`,
-    MARK_AS_READ: (notificationId) => `${API_BASE}/notifications/${notificationId}/read`,
-    DELETE: (notificationId) => `${API_BASE}/notifications/${notificationId}`,
-    GET_SETTINGS: `${API_BASE}/notifications/settings`,
-    UPDATE_SETTINGS: `${API_BASE}/notifications/settings`,
-    REGISTER_PUSH_TOKEN: `${API_BASE}/notifications/push-token`,
   },
 };
 

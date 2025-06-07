@@ -124,9 +124,6 @@ const ScheduleScreen = ({ navigation }) => {
       case 'home':
         navigation.navigate('Home');
         break;
-      case 'message':
-        navigation.navigate('Message');
-        break;
       case 'profile':
         navigation.navigate('Profile');
         break;

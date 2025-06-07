@@ -76,9 +76,6 @@ const ProfileScreen = ({ navigation }) => {
       case 'schedule':
         navigation.navigate('Schedule');
         break;
-      case 'message':
-        navigation.navigate('Message');
-        break;
       default:
         break;
     }

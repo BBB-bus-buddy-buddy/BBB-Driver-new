@@ -46,30 +46,6 @@ export const KEYS = {
     DRIVE_HISTORY: 'driveHistory',
 
     /**
-     * 캐시된 메시지 목록
-     * @type {Array<Object>} [{id, sender, preview, date, unread}]
-     * @usage 메시지 목록 캐싱, 오프라인 시 표시
-     * @screens MessageScreen(조회/저장)
-     */
-    CACHED_MESSAGES: 'cachedMessages',
-
-    /**
-     * 읽지 않은 메시지 개수
-     * @type {string} 숫자 문자열 (예: "5")
-     * @usage 메시지 아이콘 뱃지 표시
-     * @screens HomeScreen(조회), MessageScreen(업데이트)
-     */
-    UNREAD_MESSAGE_COUNT: 'unreadMessageCount',
-
-    /**
-     * 읽지 않은 알림 개수
-     * @type {string} 숫자 문자열 (예: "3")
-     * @usage 알림 아이콘 뱃지 표시
-     * @screens HomeScreen(조회/업데이트)
-     */
-    UNREAD_NOTIFICATION_COUNT: 'unreadNotificationCount',
-
-    /**
      * 마지막 사용자 정보 동기화 시간
      * @type {string} ISO 날짜 문자열 (예: "2024-01-01T12:00:00.000Z")
      * @usage 5분마다 서버와 동기화 필요 여부 판단

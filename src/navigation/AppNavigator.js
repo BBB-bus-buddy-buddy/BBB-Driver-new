@@ -9,7 +9,6 @@ import StartDriveScreen from '../screens/StartDriveScreen';
 import DrivingScreen from '../screens/DrivingScreen';
 import EndDriveScreen from '../screens/EndDriveScreen';
 import ScheduleScreen from '../screens/ScheduleScreen';
-import MessageScreen from '../screens/MessageScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import AdditionalInfoScreen from '../screens/AdditionalInfo/AdditionalInfoScreen';
 import { COLORS } from '../constants/theme';
@@ -142,7 +141,6 @@ const AppNavigator = () => {
       <Stack.Screen name="Driving" component={DrivingScreen} />
       <Stack.Screen name="EndDrive" component={EndDriveScreen} />
       <Stack.Screen name="Schedule" component={ScheduleScreen} />
-      <Stack.Screen name="Message" component={MessageScreen} />
       <Stack.Screen name="Profile" component={ProfileScreen} />
     </Stack.Navigator>
   );

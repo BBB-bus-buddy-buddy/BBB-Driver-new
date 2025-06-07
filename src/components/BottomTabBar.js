@@ -7,7 +7,6 @@ const BottomTabBar = ({ activeTab, onTabPress }) => {
   const tabs = [
     { id: 'home', label: '홈' },
     { id: 'schedule', label: '일정' },
-    { id: 'message', label: '메시지' },
     { id: 'profile', label: '프로필' },
   ];
 

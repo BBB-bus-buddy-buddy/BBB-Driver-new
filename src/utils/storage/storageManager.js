@@ -62,10 +62,7 @@ export class StorageManager {
       // 필수 키들이 존재하는지 확인하고 없으면 기본값 설정
       const essentialKeys = [
         { key: KEYS.DRIVE_SCHEDULES, defaultValue: '[]' },
-        { key: KEYS.DRIVE_HISTORY, defaultValue: '[]' },
-        { key: KEYS.CACHED_MESSAGES, defaultValue: '[]' },
-        { key: KEYS.UNREAD_MESSAGE_COUNT, defaultValue: '0' },
-        { key: KEYS.UNREAD_NOTIFICATION_COUNT, defaultValue: '0' }
+        { key: KEYS.DRIVE_HISTORY, defaultValue: '[]' }
       ];
 
       for (const { key, defaultValue } of essentialKeys) {
@@ -282,53 +279,6 @@ export class StorageManager {
     return await this._safeSetItem(KEYS.DRIVE_HISTORY, JSON.stringify(history));
   }
 
-  // ============== 메시지 & 알림 관련 메서드 ==============
-
-  /**
-   * 캐시된 메시지 목록 조회
-   */
-  async getCachedMessages() {
-    const data = await this._safeGetItem(KEYS.CACHED_MESSAGES);
-    return data ? JSON.parse(data) : [];
-  }
-
-  /**
-   * 메시지 목록 캐싱
-   */
-  async setCachedMessages(messages) {
-    return await this._safeSetItem(KEYS.CACHED_MESSAGES, JSON.stringify(messages));
-  }
-
-  /**
-   * 읽지 않은 메시지 개수 조회
-   */
-  async getUnreadMessageCount() {
-    const count = await this._safeGetItem(KEYS.UNREAD_MESSAGE_COUNT);
-    return count ? parseInt(count, 10) : 0;
-  }
-
-  /**
-   * 읽지 않은 메시지 개수 저장
-   */
-  async setUnreadMessageCount(count) {
-    return await this._safeSetItem(KEYS.UNREAD_MESSAGE_COUNT, String(count));
-  }
-
-  /**
-   * 읽지 않은 알림 개수 조회
-   */
-  async getUnreadNotificationCount() {
-    const count = await this._safeGetItem(KEYS.UNREAD_NOTIFICATION_COUNT);
-    return count ? parseInt(count, 10) : 0;
-  }
-
-  /**
-   * 읽지 않은 알림 개수 저장
-   */
-  async setUnreadNotificationCount(count) {
-    return await this._safeSetItem(KEYS.UNREAD_NOTIFICATION_COUNT, String(count));
-  }
-
   // ============== 동기화 & 추가 정보 관련 메서드 ==============
 
   /**
@@ -378,20 +328,12 @@ export class StorageManager {
         KEYS.USER_INFO,
         KEYS.CURRENT_DRIVE,
         KEYS.COMPLETED_DRIVE,
-        KEYS.CACHED_MESSAGES,
-        KEYS.UNREAD_MESSAGE_COUNT,
-        KEYS.UNREAD_NOTIFICATION_COUNT,
         KEYS.LAST_SYNC,
         KEYS.HAS_ADDITIONAL_INFO
       ];
       
       await AsyncStorage.multiRemove(userKeys);
       console.log('[Storage] 사용자 데이터 삭제 완료');
-      
-      // 필수 키들 재초기화
-      await this._safeSetItem(KEYS.CACHED_MESSAGES, '[]');
-      await this._safeSetItem(KEYS.UNREAD_MESSAGE_COUNT, '0');
-      await this._safeSetItem(KEYS.UNREAD_NOTIFICATION_COUNT, '0');
       
     } catch (error) {
       console.error('[Storage] 사용자 데이터 삭제 오류:', error);
