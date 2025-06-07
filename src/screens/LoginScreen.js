@@ -1,4 +1,4 @@
-// src/screens/LoginScreen.js - 업데이트된 버전
+// src/screens/LoginScreen.js
 import React, { useState } from 'react';
 import {
   View,
@@ -22,11 +22,7 @@ import {
 } from '../constants/theme';
 import InAppBrowser from 'react-native-inappbrowser-reborn';
 import { AuthService } from '../services';
-import { authAPI } from '../api';
-import { storage } from '../utils/storage';
 
-
-// 플랫폼별 상수 정의
 const PLATFORM_CONSTANTS = {
   OAUTH_URL: 'http://localhost:8088/oauth2/authorization/google?app=driver',
   REDIRECT_SCHEME: Platform.select({
@@ -67,32 +63,24 @@ const LoginScreen = () => {
           throw new Error('토큰을 받지 못했습니다.');
         }
 
-        console.log('[LoginScreen] 토큰 받음, 저장 중');
+        console.log('[LoginScreen] 토큰 받음, AuthService.login 호출');
 
-        await AuthService.setToken(token);
+        // AuthService.login() 사용
+        const loginResult = await AuthService.login(token);
 
-        // 토큰 저장 후 사용자 정보 가져오기
-        const userResponse = await authAPI.getUser();
-        console.log(`[LoginScreen] 사용자 상세 정보 = ${JSON.stringify(userResponse.data, null, 2)}`);
-        const userInfo = userResponse.data?.data;
-        console.log(`[LoginScreen] 사용자 역할 = ${userInfo.role}`);
+        if (loginResult.success) {
+          console.log('[LoginScreen] 로그인 성공:', loginResult.userInfo.email);
 
-        if (!userInfo) {
-          console.error('[LoginScreen] 사용자 정보를 가져올 수 없음');
-          throw new Error('사용자 정보를 가져올 수 없습니다.');
-        }
-
-        // ✅ 수정된 부분: storage를 직접 사용하여 사용자 정보 저장
-        await storage.setUserInfo(userInfo);
-        console.log('[LoginScreen] 사용자 정보 저장 완료:', userInfo.email);
-
-        // 역할에 따른 화면 이동 - navigate 사용
-        if (userInfo.role === 'ROLE_GUEST') {
-          console.log('[LoginScreen] 게스트 유저, 추가 정보 화면으로 이동');
-          navigation.navigate('AdditionalInfo');
+          // 역할에 따른 화면 이동
+          if (loginResult.needsAdditionalInfo) {
+            console.log('[LoginScreen] 게스트 유저, 추가 정보 화면으로 이동');
+            navigation.navigate('AdditionalInfo');
+          } else {
+            console.log('[LoginScreen] 일반 유저, 홈 화면으로 이동');
+            navigation.navigate('Home');
+          }
         } else {
-          console.log('[LoginScreen] 일반 유저, 홈 화면으로 이동');
-          navigation.navigate('Home');
+          throw new Error(loginResult.message || '로그인 처리에 실패했습니다.');
         }
       } else {
         console.log(`[LoginScreen] 인증 취소 또는 실패: ${result.type}`);
@@ -104,7 +92,7 @@ const LoginScreen = () => {
       if (error.message === '인증이 취소되었거나 실패했습니다.') {
         console.log('[LoginScreen] 로그인 취소됨');
       } else {
-        Alert.alert('로그인 실패', '로그인 처리 중 오류가 발생했습니다.');
+        Alert.alert('로그인 실패', error.message || '로그인 처리 중 오류가 발생했습니다.');
       }
     } finally {
       setLoading(false);

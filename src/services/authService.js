@@ -4,6 +4,65 @@ import { storage, storageHelpers } from '../utils/storage';
 
 export class AuthService {
   /**
+   * Google OAuth 로그인 처리
+   * @param {string} token - OAuth로부터 받은 토큰
+   * @returns {Promise<Object>} 로그인 결과 및 사용자 정보
+   */
+  static async login(token) {
+    try {
+      console.log('[AuthService] 로그인 시작');
+
+      // 토큰 저장
+      await storage.setToken(token);
+      console.log('[AuthService] 토큰 저장 완료');
+
+      // 사용자 정보 가져오기
+      const userResponse = await authAPI.getUser();
+      const userInfo = userResponse.data?.data;
+
+      if (!userInfo) {
+        throw new Error('사용자 정보를 가져올 수 없습니다.');
+      }
+
+      console.log('[AuthService] 사용자 정보 조회 성공:', {
+        email: userInfo.email,
+        role: userInfo.role
+      });
+
+      // 사용자 정보 저장
+      await storage.setUserInfo(userInfo);
+
+      // 동기화 시간 기록
+      await storage.setLastSync(new Date().toISOString());
+
+      console.log('[AuthService] 로그인 완료');
+
+      return {
+        success: true,
+        userInfo,
+        role: userInfo.role,
+        needsAdditionalInfo: userInfo.role === 'ROLE_GUEST'
+      };
+
+    } catch (error) {
+      console.error('[AuthService] 로그인 오류:', error);
+
+      // 로그인 실패 시 토큰 삭제
+      try {
+        await storage.removeToken();
+      } catch (removeError) {
+        console.error('[AuthService] 토큰 삭제 실패:', removeError);
+      }
+
+      return {
+        success: false,
+        message: error.response?.data?.message || error.message || '로그인 처리 중 오류가 발생했습니다.',
+        error
+      };
+    }
+  }
+
+  /**
    * 사용자 정보 동기화 및 업데이트 확인 (기존 syncUserInfo)
    */
   static async syncUserInfo() {
