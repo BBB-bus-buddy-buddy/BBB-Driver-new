@@ -8,13 +8,12 @@ import HomeScreen from '../screens/HomeScreen';
 import StartDriveScreen from '../screens/StartDriveScreen';
 import DrivingScreen from '../screens/DrivingScreen';
 import EndDriveScreen from '../screens/EndDriveScreen';
-import ScheduleScreen from '../screens/ScheduleScreen';
 import ProfileScreen from '../screens/ProfileScreen';
-import AdditionalInfoScreen from '../screens/AdditionalInfo/AdditionalInfoScreen';
 import { COLORS } from '../constants/theme';
 
 import { AuthService } from '../services/authService';
 import AdditionalInfoBeta from '../screens/AdditionalInfoBeta/AdditioncalInfoBeta';
+import OperationPlanScreen from '../screens/OperationPlanScreen';
 
 const Stack = createStackNavigator();
 
@@ -140,7 +139,7 @@ const AppNavigator = () => {
       <Stack.Screen name="StartDrive" component={StartDriveScreen} />
       <Stack.Screen name="Driving" component={DrivingScreen} />
       <Stack.Screen name="EndDrive" component={EndDriveScreen} />
-      <Stack.Screen name="Schedule" component={ScheduleScreen} />
+      <Stack.Screen name="OperationPlan" component={OperationPlanScreen} />
       <Stack.Screen name="Profile" component={ProfileScreen} />
     </Stack.Navigator>
   );

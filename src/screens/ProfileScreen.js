@@ -41,10 +41,10 @@ const ProfileScreen = ({ navigation }) => {
           navigation.replace('Login');
           return;
         }
-        
+
         // 운행 통계 정보 로드
         await loadDrivingStats();
-        
+
       } catch (error) {
         console.error('[ProfileScreen] 사용자 정보 로드 오류:', error);
         Alert.alert('오류', '정보를 불러올 수 없습니다. 다시 로그인해주세요.');
@@ -61,10 +61,10 @@ const ProfileScreen = ({ navigation }) => {
   const loadDrivingStats = async () => {
     try {
       console.log('[ProfileScreen] 운행 통계 로드 중...');
-      
+
       // StatisticsService 사용
       const statsResponse = await StatisticsService.getUserStats();
-      
+
       if (statsResponse.success && statsResponse.data) {
         setDrivingStats(statsResponse.data);
         console.log('[ProfileScreen] 운행 통계 로드 완료:', {
@@ -82,13 +82,13 @@ const ProfileScreen = ({ navigation }) => {
 
   const handleTabPress = (tabId) => {
     setActiveBottomTab(tabId);
-    
+
     switch (tabId) {
       case 'home':
         navigation.navigate('Home');
         break;
-      case 'schedule':
-        navigation.navigate('Schedule');
+      case 'operationPlan':
+        navigation.navigate('OperationPlan');
         break;
       default:
         break;
@@ -110,7 +110,7 @@ const ProfileScreen = ({ navigation }) => {
             try {
               setLoading(true);
               const result = await AuthService.logout();
-              
+
               if (result.success) {
                 // 로그인 화면으로 이동
                 navigation.replace('Login');
@@ -120,7 +120,7 @@ const ProfileScreen = ({ navigation }) => {
               }
             } catch (error) {
               console.error('[ProfileScreen] 로그아웃 오류:', error);
-              
+
               // API 오류가 발생해도 로컬 스토리지 정리 후 로그인 화면으로 이동
               await AuthService.clearUserData();
               navigation.replace('Login');
@@ -220,14 +220,14 @@ const ProfileScreen = ({ navigation }) => {
                 </View>
                 <View style={styles.additionalStatItem}>
                   <Text style={styles.additionalStatValue}>
-                    {drivingStats.onTimeRate !== undefined && drivingStats.onTimeRate.toFixed(1) !== null 
-                      ? drivingStats.onTimeRate.toFixed(1) 
+                    {drivingStats.onTimeRate !== undefined && drivingStats.onTimeRate.toFixed(1) !== null
+                      ? drivingStats.onTimeRate.toFixed(1)
                       : '0.0'}%
                   </Text>
                   <Text style={styles.additionalStatLabel}>정시 운행률</Text>
                 </View>
               </View>
-              
+
               <View style={styles.additionalStatRow}>
                 <View style={styles.additionalStatItem}>
                   <Text style={styles.additionalStatValue}>{drivingStats.totalDistance || 0}km</Text>
@@ -235,8 +235,8 @@ const ProfileScreen = ({ navigation }) => {
                 </View>
                 <View style={styles.additionalStatItem}>
                   <Text style={styles.additionalStatValue}>
-                    {drivingStats.customerRating !== undefined && drivingStats.customerRating !== null 
-                      ? drivingStats.customerRating.toFixed(1) 
+                    {drivingStats.customerRating !== undefined && drivingStats.customerRating !== null
+                      ? drivingStats.customerRating.toFixed(1)
                       : '0.0'}
                   </Text>
                   <Text style={styles.additionalStatLabel}>고객 평점</Text>
@@ -277,15 +277,15 @@ const ProfileScreen = ({ navigation }) => {
               <Text style={[styles.optionText, { color: COLORS.error }]}>로그아웃</Text>
             </TouchableOpacity>
           </View>
-          
+
           <View style={styles.appInfoSection}>
             <Text style={styles.appVersion}>버스 운행 관리 시스템 v1.0.0</Text>
           </View>
-          
+
           {/* 하단 여백 */}
           <View style={styles.bottomPadding} />
         </ScrollView>
-        
+
         {/* 하단 탭 바 */}
         <BottomTabBar
           activeTab={activeBottomTab}

@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -19,19 +20,13 @@ import {
   SPACING,
 } from '../constants/theme';
 
-// 🔄 NEW: ScheduleService 사용
-import { ScheduleService } from '../services';
+// 🔄 OperationPlanService 사용
+import OperationPlanService from '../services/operationPlanService';
 import { storage } from '../utils/storage';
 
 import DriveStatusCard from '../components/DriveStatusCard';
 import BottomTabBar from '../components/BottomTabBar';
 import { isTimeNearby } from '../utils/dateUtils';
-
-// 🆕 더미데이터 import 추가
-import { 
-  generateDummySchedules, 
-  getTodaySchedules
-} from '../data/dummyScheduleData';
 
 const HomeScreen = ({ navigation }) => {
   const [userInfo, setUserInfo] = useState(null);
@@ -48,7 +43,7 @@ const HomeScreen = ({ navigation }) => {
       try {
         setInitialLoading(true);
 
-        // 🔄 NEW: storage 헬퍼 사용
+        // storage 헬퍼 사용
         const storedUserInfo = await storage.getUserInfo();
         if (storedUserInfo) {
           setUserInfo(storedUserInfo);
@@ -80,24 +75,25 @@ const HomeScreen = ({ navigation }) => {
     try {
       setRefreshing(true);
       
-      // 🆕 더미데이터 사용
-      const USE_DUMMY_DATA = true; // 백엔드 개발 완료 시 false로 변경
-      
-      try { // 운행 일정 데이터 불러오기
-        let schedules;
+      try {
+        // 운전자의 오늘 운행 일정 가져오기
+        const schedules = await OperationPlanService.getDriverTodaySchedules();
+        console.log('[HomeScreen] 오늘의 운행 일정:', schedules);
         
-        if (USE_DUMMY_DATA) {
-          // 더미데이터 생성
-          const allSchedules = generateDummySchedules();
-          schedules = getTodaySchedules(allSchedules);
-          console.log('[HomeScreen] 오늘의 더미 운행 일정:', schedules.length, '개');
-        } else {
-          // 실제 API 호출 - 오늘의 일정만 가져오기
-          schedules = await ScheduleService.getTodaySchedules();
+        // 빈 배열이어도 정상 처리
+        if (!Array.isArray(schedules)) {
+          console.warn('[HomeScreen] 일정이 배열이 아님:', schedules);
+          setDriveSchedules([]);
+          return;
         }
 
+        console.log('[HomeScreen] 오늘의 운행 일정 개수:', schedules.length);
+
+        // 데이터 포맷팅
+        const formattedSchedules = OperationPlanService.formatScheduleList(schedules);
+
         // 버튼 활성화 여부 계산
-        const schedulesWithButtonStatus = schedules.map(schedule => ({
+        const schedulesWithButtonStatus = formattedSchedules.map(schedule => ({
           ...schedule,
           isButtonActive: isTimeNearby(schedule.departureTime),
         }));
@@ -105,6 +101,8 @@ const HomeScreen = ({ navigation }) => {
         setDriveSchedules(schedulesWithButtonStatus);
       } catch (scheduleError) {
         console.error('[HomeScreen] 운행 일정 로드 오류:', scheduleError);
+        // API 오류 시 빈 배열로 설정
+        setDriveSchedules([]);
       }
 
     } catch (error) {
@@ -140,8 +138,8 @@ const HomeScreen = ({ navigation }) => {
       case 'home':
         // 이미 홈 화면이므로 아무 작업도 하지 않음
         break;
-      case 'schedule':
-        navigation.navigate('Schedule');
+      case 'operationPlan':
+        navigation.navigate('OperationPlan');
         break;
       case 'profile':
         navigation.navigate('Profile');
@@ -198,7 +196,7 @@ const HomeScreen = ({ navigation }) => {
                         styles.driveTabText,
                         activeTab === index && styles.activeTabText,
                       ]}>
-                      운행 {drive.id}
+                      운행 {index + 1}
                     </Text>
                   </TouchableOpacity>
                 ))}

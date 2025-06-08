@@ -6,7 +6,7 @@ import { COLORS, FONT_SIZE, FONT_WEIGHT } from '../constants/theme';
 const BottomTabBar = ({ activeTab, onTabPress }) => {
   const tabs = [
     { id: 'home', label: '홈' },
-    { id: 'schedule', label: '일정' },
+    { id: 'operationPlan', label: '운행 일정' },
     { id: 'profile', label: '프로필' },
   ];
 
