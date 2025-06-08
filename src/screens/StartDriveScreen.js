@@ -12,62 +12,127 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, SHADOWS, SPACING } from '../constants/theme';
 import { DriveService } from '../services';
-import { requestLocationPermission, getCurrentLocation, isUserAtLocation, getDepartureLocation } from '../services/locationService';
+import { 
+  requestLocationPermission, 
+  getCurrentLocation, 
+  isUserAtLocation, 
+  getRouteStartLocation 
+} from '../services/locationService';
+import { isDriveStartTimeReached } from '../utils/driveTimeUtils';
 
 const StartDriveScreen = ({ navigation, route }) => {
   const { drive } = route.params;
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [checkingLocation, setCheckingLocation] = useState(true);
   const [locationConfirmed, setLocationConfirmed] = useState(false);
-  const [countdown, setCountdown] = useState(5); // 위치 확인을 위한 카운트다운
+  const [currentLocation, setCurrentLocation] = useState(null);
+  const [startLocation, setStartLocation] = useState(null);
+  const [distance, setDistance] = useState(null);
+  const [locationError, setLocationError] = useState(null);
 
   useEffect(() => {
-    // 위치 권한 및 현재 위치 확인
-    const checkLocation = async () => {
-      try {
-        // 위치 권한 요청
-        const hasPermission = await requestLocationPermission();
+    checkLocationAndPermission();
+  }, []);
 
-        if (hasPermission) {
-          // 시뮬레이션을 위한 카운트다운
-          let timer = setInterval(() => {
-            setCountdown((prevCount) => {
-              if (prevCount <= 1) {
-                clearInterval(timer);
+  const checkLocationAndPermission = async () => {
+    try {
+      setCheckingLocation(true);
+      setLocationError(null);
 
-                // 실제로는 현재 위치와 출발 위치를 비교해야 함
-                // 시뮬레이션을 위해 항상 위치가 확인되었다고 가정
-                setLoading(false);
-                setLocationConfirmed(true);
-                return 0;
-              }
-              return prevCount - 1;
-            });
-          }, 1000);
+      // 위치 권한 요청
+      const hasPermission = await requestLocationPermission();
 
-          return () => clearInterval(timer);
-        } else {
-          setLoading(false);
-          Alert.alert(
-            '위치 권한 필요',
-            '운행 시작을 위해 위치 권한이 필요합니다.',
-            [{ text: '확인', onPress: () => navigation.goBack() }]
-          );
-        }
-      } catch (error) {
-        console.error('[StartDriveScreen] 위치 확인 오류:', error);
-        setLoading(false);
+      if (!hasPermission) {
+        setLocationError('위치 권한이 필요합니다.');
         Alert.alert(
-          '오류',
-          '위치 확인 중 오류가 발생했습니다.',
+          '위치 권한 필요',
+          '운행 시작을 위해 위치 권한이 필요합니다.',
           [{ text: '확인', onPress: () => navigation.goBack() }]
         );
+        return;
       }
-    };
 
-    checkLocation();
-  }, [navigation]);
+      // 출발지 위치 정보 가져오기
+      const routeStartLocation = getRouteStartLocation(drive.route);
+      if (!routeStartLocation) {
+        setLocationError('출발지 정보를 찾을 수 없습니다.');
+        return;
+      }
+      setStartLocation(routeStartLocation);
+
+      // 현재 위치 가져오기
+      try {
+        const location = await getCurrentLocation();
+        setCurrentLocation(location);
+
+        // 출발지 도착 여부 확인 (20m 이내)
+        const isAtStart = isUserAtLocation(location, routeStartLocation, 20);
+        setLocationConfirmed(isAtStart);
+
+        // 거리 계산 (디버깅용)
+        const distanceToStart = calculateDistance(
+          location.latitude,
+          location.longitude,
+          routeStartLocation.latitude,
+          routeStartLocation.longitude
+        );
+        setDistance(Math.round(distanceToStart));
+
+      } catch (locError) {
+        console.error('[StartDriveScreen] 위치 조회 오류:', locError);
+        setLocationError('현재 위치를 확인할 수 없습니다.');
+      }
+
+    } catch (error) {
+      console.error('[StartDriveScreen] 위치 확인 오류:', error);
+      setLocationError('위치 확인 중 오류가 발생했습니다.');
+    } finally {
+      setCheckingLocation(false);
+    }
+  };
+
+  // 거리 계산 헬퍼 함수
+  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371e3;
+    const φ1 = (lat1 * Math.PI) / 180;
+    const φ2 = (lat2 * Math.PI) / 180;
+    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+              Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c;
+  };
 
   const handleStartDrive = async () => {
+    // 운행 시작 시간 확인
+    const isTimeReached = isDriveStartTimeReached(drive.departureTime);
+    
+    if (!isTimeReached) {
+      // 시간이 안 됐을 때 확인 다이얼로그
+      Alert.alert(
+        '운행 시작 시간 전',
+        '운행 시작 시간 전입니다. 일찍 시작하시겠습니까?',
+        [
+          {
+            text: '아니오',
+            style: 'cancel'
+          },
+          {
+            text: '예',
+            onPress: startDrive
+          }
+        ],
+        { cancelable: false }
+      );
+    } else {
+      startDrive();
+    }
+  };
+
+  const startDrive = async () => {
     try {
       setLoading(true);
 
@@ -82,9 +147,16 @@ const StartDriveScreen = ({ navigation, route }) => {
     }
   };
 
+  const handleRefreshLocation = () => {
+    checkLocationAndPermission();
+  };
+
   const handleGoBack = () => {
     navigation.goBack();
   };
+
+  // 운행 시작 버튼 활성화 조건
+  const canStartDrive = locationConfirmed && !checkingLocation && !loading;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -93,7 +165,7 @@ const StartDriveScreen = ({ navigation, route }) => {
           <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
             <Text style={styles.backButtonText}>← 뒤로</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>운행 시작</Text>
+          <Text style={styles.headerTitle}>운행 준비</Text>
           <View style={{ width: 40 }} />
         </View>
 
@@ -118,19 +190,29 @@ const StartDriveScreen = ({ navigation, route }) => {
 
           <View style={styles.locationCheckCard}>
             <Text style={styles.locationCheckTitle}>
-              {loading
-                ? `출발 위치 확인 중 (${countdown}초)`
-                : locationConfirmed
-                  ? '출발 위치 확인 완료!'
-                  : '출발 위치가 다릅니다'}
+              출발지 도착 확인
             </Text>
 
-            {loading ? (
+            {checkingLocation ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color={COLORS.primary} />
                 <Text style={styles.loadingText}>
                   현재 위치를 확인하고 있습니다...
                 </Text>
+              </View>
+            ) : locationError ? (
+              <View style={styles.errorContainer}>
+                <Image
+                  source={require('../assets/location-error.png')}
+                  style={styles.errorIcon}
+                />
+                <Text style={styles.errorText}>{locationError}</Text>
+                <TouchableOpacity 
+                  style={styles.retryButton} 
+                  onPress={handleRefreshLocation}
+                >
+                  <Text style={styles.retryButtonText}>다시 시도</Text>
+                </TouchableOpacity>
               </View>
             ) : locationConfirmed ? (
               <View style={styles.confirmedContainer}>
@@ -139,34 +221,59 @@ const StartDriveScreen = ({ navigation, route }) => {
                   style={styles.confirmedIcon}
                 />
                 <Text style={styles.confirmedText}>
-                  출발 지점에 도착했습니다. 운행을 시작하세요.
+                  출발 지점에 도착했습니다!
+                </Text>
+                <Text style={styles.locationName}>
+                  {startLocation?.name}
                 </Text>
               </View>
             ) : (
               <View style={styles.notConfirmedContainer}>
                 <Image
                   source={require('../assets/location-error.png')}
-                  style={styles.errorIcon}
+                  style={styles.warningIcon}
                 />
-                <Text style={styles.errorText}>
-                  출발 지점에 위치하고 있지 않습니다. 출발 지점으로 이동해주세요.
+                <Text style={styles.warningText}>
+                  출발 지점에서 {distance}m 떨어져 있습니다.
                 </Text>
+                <Text style={styles.locationInstruction}>
+                  {startLocation?.name}(으)로 이동해주세요.
+                </Text>
+                <Text style={styles.distanceHint}>
+                  (20m 이내로 접근하세요)
+                </Text>
+                <TouchableOpacity 
+                  style={styles.refreshButton} 
+                  onPress={handleRefreshLocation}
+                >
+                  <Text style={styles.refreshButtonText}>위치 다시 확인</Text>
+                </TouchableOpacity>
               </View>
             )}
           </View>
+
+          {startLocation && (
+            <View style={styles.locationInfoCard}>
+              <Text style={styles.locationInfoTitle}>출발지 정보</Text>
+              <Text style={styles.locationInfoText}>{startLocation.name}</Text>
+              <Text style={styles.locationInfoAddress}>{startLocation.address}</Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.bottomContainer}>
           <TouchableOpacity
             style={[
               styles.startButton,
-              !locationConfirmed && styles.disabledButton,
+              !canStartDrive && styles.disabledButton,
             ]}
             onPress={handleStartDrive}
-            disabled={!locationConfirmed || loading}
+            disabled={!canStartDrive}
           >
             <Text style={styles.startButtonText}>
-              {loading ? '위치 확인 중...' : '운행 시작'}
+              {loading ? '운행 시작 중...' : 
+               !locationConfirmed ? '출발지에 도착 후 시작 가능' : 
+               '운행 시작'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -279,6 +386,10 @@ const styles = StyleSheet.create({
     color: COLORS.grey,
     textAlign: 'center',
   },
+  errorContainer: {
+    alignItems: 'center',
+    padding: SPACING.sm,
+  },
   confirmedContainer: {
     alignItems: 'center',
     padding: SPACING.sm,
@@ -293,10 +404,41 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     textAlign: 'center',
     lineHeight: 22,
+    fontWeight: FONT_WEIGHT.semiBold,
+  },
+  locationName: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.grey,
+    marginTop: SPACING.xs,
   },
   notConfirmedContainer: {
     alignItems: 'center',
     padding: SPACING.sm,
+  },
+  warningIcon: {
+    width: 60,
+    height: 60,
+    marginBottom: SPACING.md,
+  },
+  warningText: {
+    fontSize: FONT_SIZE.md,
+    color: COLORS.warning,
+    textAlign: 'center',
+    lineHeight: 22,
+    fontWeight: FONT_WEIGHT.medium,
+  },
+  locationInstruction: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.grey,
+    textAlign: 'center',
+    marginTop: SPACING.xs,
+  },
+  distanceHint: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.lightGrey,
+    textAlign: 'center',
+    marginTop: SPACING.xs,
+    marginBottom: SPACING.md,
   },
   errorIcon: {
     width: 60,
@@ -308,6 +450,50 @@ const styles = StyleSheet.create({
     color: COLORS.error,
     textAlign: 'center',
     lineHeight: 22,
+    marginBottom: SPACING.md,
+  },
+  retryButton: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  retryButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.medium,
+  },
+  refreshButton: {
+    backgroundColor: COLORS.secondary,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  refreshButtonText: {
+    color: COLORS.primary,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.medium,
+  },
+  locationInfoCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.md,
+    ...SHADOWS.small,
+  },
+  locationInfoTitle: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.grey,
+    marginBottom: SPACING.xs,
+  },
+  locationInfoText: {
+    fontSize: FONT_SIZE.md,
+    color: COLORS.black,
+    fontWeight: FONT_WEIGHT.medium,
+    marginBottom: SPACING.xs,
+  },
+  locationInfoAddress: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.grey,
   },
   bottomContainer: {
     padding: SPACING.md,

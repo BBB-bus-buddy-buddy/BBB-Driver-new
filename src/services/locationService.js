@@ -1,4 +1,3 @@
-
 // src/services/locationService.js
 import { PermissionsAndroid, Platform } from 'react-native';
 import Geolocation from 'react-native-geolocation-service';
@@ -122,7 +121,7 @@ export const calculateDistance = (lat1, lon1, lat2, lon2) => {
 export const isUserAtLocation = (
   userLocation,
   targetLocation,
-  radiusInMeters = 50
+  radiusInMeters = 20
 ) => {
   const distance = calculateDistance(
     userLocation.latitude,
@@ -132,4 +131,56 @@ export const isUserAtLocation = (
   );
   
   return distance <= radiusInMeters;
+};
+
+/**
+ * 노선별 출발지 위치 정보 (더미 데이터)
+ * 실제로는 API에서 받아와야 함
+ */
+export const ROUTE_START_LOCATIONS = {
+  '동부캠퍼스 - 서부캠퍼스': {
+    latitude: 37.5665,
+    longitude: 126.9780,
+    name: '동부캠퍼스 정문',
+    address: '서울시 종로구 동부캠퍼스 정문'
+  },
+  '서부캠퍼스 - 동부캠퍼스': {
+    latitude: 37.5565,
+    longitude: 126.9680,
+    name: '서부캠퍼스 정문',
+    address: '서울시 종로구 서부캠퍼스 정문'
+  },
+  '동부캠퍼스 - 시청': {
+    latitude: 37.5665,
+    longitude: 126.9780,
+    name: '동부캠퍼스 정문',
+    address: '서울시 종로구 동부캠퍼스 정문'
+  },
+  '시청 - 동부캠퍼스': {
+    latitude: 37.5663,
+    longitude: 126.9779,
+    name: '시청역 3번 출구',
+    address: '서울시 중구 시청역 3번 출구'
+  },
+  '서부캠퍼스 - 터미널': {
+    latitude: 37.5565,
+    longitude: 126.9680,
+    name: '서부캠퍼스 정문',
+    address: '서울시 종로구 서부캠퍼스 정문'
+  },
+  '터미널 - 서부캠퍼스': {
+    latitude: 37.5045,
+    longitude: 127.0050,
+    name: '서울고속버스터미널',
+    address: '서울시 서초구 서울고속버스터미널'
+  }
+};
+
+/**
+ * 노선의 출발지 위치 정보 가져오기
+ * @param {string} routeName - 노선명
+ * @returns {Object|null} 출발지 위치 정보
+ */
+export const getRouteStartLocation = (routeName) => {
+  return ROUTE_START_LOCATIONS[routeName] || null;
 };

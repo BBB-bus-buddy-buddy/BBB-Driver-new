@@ -37,7 +37,7 @@ const DriveStatusCard = ({ drive, onPress, isActive }) => {
         disabled={!isActive}
       >
         <Text style={styles.startDriveButtonText}>
-          {isActive ? '운행 시작' : '출발 시간 전입니다'}
+          {isActive ? '운행 준비' : '출발 시간 1시간 전부터 가능'}
         </Text>
       </TouchableOpacity>
     </View>

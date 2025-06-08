@@ -26,7 +26,7 @@ import { storage } from '../utils/storage';
 
 import DriveStatusCard from '../components/DriveStatusCard';
 import BottomTabBar from '../components/BottomTabBar';
-import { isTimeNearby } from '../utils/dateUtils';
+import { isDrivePreparationTime } from '../utils/driveTimeUtils';
 
 const HomeScreen = ({ navigation }) => {
   const [userInfo, setUserInfo] = useState(null);
@@ -95,7 +95,7 @@ const HomeScreen = ({ navigation }) => {
         // 버튼 활성화 여부 계산
         const schedulesWithButtonStatus = formattedSchedules.map(schedule => ({
           ...schedule,
-          isButtonActive: isTimeNearby(schedule.departureTime),
+          isButtonActive: isDrivePreparationTime(schedule.departureTime),
         }));
 
         setDriveSchedules(schedulesWithButtonStatus);
