@@ -183,23 +183,29 @@ const HomeScreen = ({ navigation }) => {
             {/* 운행 탭 */}
             {driveSchedules.length > 0 && (
               <View style={styles.driveTabs}>
-                {driveSchedules.map((drive, index) => (
-                  <TouchableOpacity
-                    key={drive.id}
-                    style={[
-                      styles.driveTab,
-                      activeTab === index && styles.activeTab,
-                    ]}
-                    onPress={() => setActiveTab(index)}>
-                    <Text
+                {driveSchedules.map((drive, index) => {
+                  // 출발 시간에서 시간 부분만 추출
+                  const timeMatch = drive.departureTime.match(/(\d+):(\d+)/);
+                  const displayTime = timeMatch ? `${timeMatch[1]}:${timeMatch[2]}` : `운행 ${index + 1}`;
+                  
+                  return (
+                    <TouchableOpacity
+                      key={drive.id}
                       style={[
-                        styles.driveTabText,
-                        activeTab === index && styles.activeTabText,
-                      ]}>
-                      운행 {index + 1}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                        styles.driveTab,
+                        activeTab === index && styles.activeTab,
+                      ]}
+                      onPress={() => setActiveTab(index)}>
+                      <Text
+                        style={[
+                          styles.driveTabText,
+                          activeTab === index && styles.activeTabText,
+                        ]}>
+                        {displayTime}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             )}
 
