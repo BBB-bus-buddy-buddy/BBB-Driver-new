@@ -11,14 +11,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, SHADOWS, SPACING } from '../constants/theme';
-import { DriveService } from '../services';
+import { driveAPI, canStartDrive, checkArrivalAtStart } from '../api/drive';
 import { 
   requestLocationPermission, 
   getCurrentLocation, 
-  isUserAtLocation, 
   getRouteStartLocation 
 } from '../services/locationService';
-import { isDriveStartTimeReached } from '../utils/driveTimeUtils';
 
 const StartDriveScreen = ({ navigation, route }) => {
   const { drive } = route.params;
@@ -52,31 +50,33 @@ const StartDriveScreen = ({ navigation, route }) => {
         return;
       }
 
-      // 출발지 위치 정보 가져오기
+      // 출발지 위치 정보 가져오기 (실제로는 운행 일정에서 가져와야 함)
       const routeStartLocation = getRouteStartLocation(drive.route);
       if (!routeStartLocation) {
-        setLocationError('출발지 정보를 찾을 수 없습니다.');
-        return;
+        // API에서 출발지 정보 가져오기
+        if (drive.startLocation) {
+          setStartLocation(drive.startLocation);
+        } else {
+          setLocationError('출발지 정보를 찾을 수 없습니다.');
+          return;
+        }
+      } else {
+        setStartLocation(routeStartLocation);
       }
-      setStartLocation(routeStartLocation);
 
       // 현재 위치 가져오기
       try {
         const location = await getCurrentLocation();
         setCurrentLocation(location);
 
-        // 출발지 도착 여부 확인 (20m 이내)
-        const isAtStart = isUserAtLocation(location, routeStartLocation, 20);
-        setLocationConfirmed(isAtStart);
-
-        // 거리 계산 (디버깅용)
-        const distanceToStart = calculateDistance(
-          location.latitude,
-          location.longitude,
-          routeStartLocation.latitude,
-          routeStartLocation.longitude
+        // 출발지 도착 여부 확인 (50m 이내)
+        const arrivalCheck = checkArrivalAtStart(
+          location, 
+          startLocation || routeStartLocation || drive.startLocation
         );
-        setDistance(Math.round(distanceToStart));
+        
+        setLocationConfirmed(arrivalCheck.isArrived);
+        setDistance(arrivalCheck.distance);
 
       } catch (locError) {
         console.error('[StartDriveScreen] 위치 조회 오류:', locError);
@@ -91,30 +91,15 @@ const StartDriveScreen = ({ navigation, route }) => {
     }
   };
 
-  // 거리 계산 헬퍼 함수
-  const calculateDistance = (lat1, lon1, lat2, lon2) => {
-    const R = 6371e3;
-    const φ1 = (lat1 * Math.PI) / 180;
-    const φ2 = (lat2 * Math.PI) / 180;
-    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
-    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
-
-    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-              Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    return R * c;
-  };
-
   const handleStartDrive = async () => {
-    // 운행 시작 시간 확인
-    const isTimeReached = isDriveStartTimeReached(drive.departureTime);
+    // 운행 시작 가능 여부 확인
+    const startCheck = canStartDrive(drive.scheduledStart || drive.departureTime);
     
-    if (!isTimeReached) {
-      // 시간이 안 됐을 때 확인 다이얼로그
+    if (!startCheck.canStart) {
+      // 조기 출발 확인
       Alert.alert(
-        '운행 시작 시간 전',
-        '운행 시작 시간 전입니다. 일찍 시작하시겠습니까?',
+        '운행 시작 확인',
+        startCheck.message + '\n조기 출발하시겠습니까?',
         [
           {
             text: '아니오',
@@ -122,24 +107,46 @@ const StartDriveScreen = ({ navigation, route }) => {
           },
           {
             text: '예',
-            onPress: startDrive
+            onPress: () => startDrive(true) // 조기 출발
           }
         ],
         { cancelable: false }
       );
     } else {
-      startDrive();
+      startDrive(false); // 정상 출발
     }
   };
 
-  const startDrive = async () => {
+  const startDrive = async (isEarlyStart) => {
     try {
       setLoading(true);
 
-      const activeDrive = await DriveService.startDrive(drive);
+      const requestData = {
+        operationId: drive.id || drive.operationId,
+        isEarlyStart: isEarlyStart,
+        currentLocation: currentLocation ? {
+          latitude: currentLocation.latitude,
+          longitude: currentLocation.longitude,
+          timestamp: currentLocation.timestamp || Date.now()
+        } : null
+      };
 
-      // 운행 중 화면으로 이동
-      navigation.replace('Driving', { drive: activeDrive });
+      const response = await driveAPI.startDrive(requestData);
+
+      if (response.data.success) {
+        const driveStatus = response.data.data;
+        
+        // 운행 중 화면으로 이동
+        navigation.replace('Driving', { 
+          drive: {
+            ...drive,
+            ...driveStatus,
+            status: 'IN_PROGRESS'
+          } 
+        });
+      } else {
+        throw new Error(response.data.message || '운행 시작에 실패했습니다.');
+      }
     } catch (error) {
       setLoading(false);
       console.error('[StartDriveScreen] 운행 시작 오류:', error);
@@ -156,7 +163,7 @@ const StartDriveScreen = ({ navigation, route }) => {
   };
 
   // 운행 시작 버튼 활성화 조건
-  const canStartDrive = locationConfirmed && !checkingLocation && !loading;
+  const canStart = locationConfirmed && !checkingLocation && !loading;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -173,7 +180,7 @@ const StartDriveScreen = ({ navigation, route }) => {
           <View style={styles.driveInfoCard}>
             <Text style={styles.busNumber}>{drive.busNumber}</Text>
             <View style={styles.routeInfo}>
-              <Text style={styles.routeText}>{drive.route}</Text>
+              <Text style={styles.routeText}>{drive.route || drive.routeName}</Text>
             </View>
             <View style={styles.timeInfo}>
               <View style={styles.timeItem}>
@@ -240,7 +247,7 @@ const StartDriveScreen = ({ navigation, route }) => {
                   {startLocation?.name}(으)로 이동해주세요.
                 </Text>
                 <Text style={styles.distanceHint}>
-                  (20m 이내로 접근하세요)
+                  (50m 이내로 접근하세요)
                 </Text>
                 <TouchableOpacity 
                   style={styles.refreshButton} 
@@ -256,7 +263,9 @@ const StartDriveScreen = ({ navigation, route }) => {
             <View style={styles.locationInfoCard}>
               <Text style={styles.locationInfoTitle}>출발지 정보</Text>
               <Text style={styles.locationInfoText}>{startLocation.name}</Text>
-              <Text style={styles.locationInfoAddress}>{startLocation.address}</Text>
+              {startLocation.address && (
+                <Text style={styles.locationInfoAddress}>{startLocation.address}</Text>
+              )}
             </View>
           )}
         </View>
@@ -265,10 +274,10 @@ const StartDriveScreen = ({ navigation, route }) => {
           <TouchableOpacity
             style={[
               styles.startButton,
-              !canStartDrive && styles.disabledButton,
+              !canStart && styles.disabledButton,
             ]}
             onPress={handleStartDrive}
-            disabled={!canStartDrive}
+            disabled={!canStart}
           >
             <Text style={styles.startButtonText}>
               {loading ? '운행 시작 중...' : 
