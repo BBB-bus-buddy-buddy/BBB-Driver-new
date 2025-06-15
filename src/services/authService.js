@@ -11,26 +11,55 @@ export class AuthService {
   static async login(token) {
     try {
       console.log('[AuthService] 로그인 시작');
+      
+      // 토큰 유효성 검사
+      if (!token || typeof token !== 'string' || token.trim() === '') {
+        throw new Error('유효하지 않은 토큰입니다.');
+      }
 
       // 토큰 저장
-      await storage.setToken(token);
+      console.log('[AuthService] 토큰 저장 중...');
+      const tokenSaved = await storage.setToken(token);
+      
+      if (!tokenSaved) {
+        throw new Error('토큰 저장에 실패했습니다.');
+      }
+      
       console.log('[AuthService] 토큰 저장 완료');
 
       // 사용자 정보 가져오기
+      console.log('[AuthService] 사용자 정보 조회 중...');
       const userResponse = await authAPI.getUser();
+      
+      if (!userResponse || !userResponse.data) {
+        throw new Error('서버 응답이 없습니다.');
+      }
+      
       const userInfo = userResponse.data?.data;
 
       if (!userInfo) {
-        throw new Error('사용자 정보를 가져올 수 없습니다.');
+        throw new Error('사용자 정보가 없습니다.');
+      }
+
+      // 필수 정보 검증
+      if (!userInfo.email || !userInfo.role) {
+        console.error('[AuthService] 필수 정보 누락:', userInfo);
+        throw new Error('사용자 필수 정보가 누락되었습니다.');
       }
 
       console.log('[AuthService] 사용자 정보 조회 성공:', {
         email: userInfo.email,
-        role: userInfo.role
+        role: userInfo.role,
+        name: userInfo.name || 'Unknown'
       });
 
       // 사용자 정보 저장
-      await storage.setUserInfo(userInfo);
+      console.log('[AuthService] 사용자 정보 저장 중...');
+      const userInfoSaved = await storage.setUserInfo(userInfo);
+      
+      if (!userInfoSaved) {
+        throw new Error('사용자 정보 저장에 실패했습니다.');
+      }
 
       // 동기화 시간 기록
       await storage.setLastSync(new Date().toISOString());
@@ -54,26 +83,45 @@ export class AuthService {
         console.error('[AuthService] 토큰 삭제 실패:', removeError);
       }
 
+      // API 에러 처리
+      let errorMessage = '로그인 처리 중 오류가 발생했습니다.';
+      
+      if (error.response) {
+        // 서버 응답 에러
+        if (error.response.status === 401) {
+          errorMessage = '인증에 실패했습니다. 다시 로그인해주세요.';
+        } else if (error.response.status === 403) {
+          errorMessage = '접근 권한이 없습니다.';
+        } else if (error.response.status >= 500) {
+          errorMessage = '서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+        } else if (error.response.data?.message) {
+          errorMessage = error.response.data.message;
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
       return {
         success: false,
-        message: error.response?.data?.message || error.message || '로그인 처리 중 오류가 발생했습니다.',
+        message: errorMessage,
         error
       };
     }
   }
 
   /**
-   * 사용자 정보 동기화 및 업데이트 확인 (기존 syncUserInfo)
+   * 사용자 정보 동기화 및 업데이트 확인
    */
   static async syncUserInfo() {
     try {
       const token = await storage.getToken();
 
       if (!token) {
+        console.log('[AuthService] 토큰이 없어 동기화 불가');
         return {
           success: false,
           needsLogin: true,
-          message: '토큰이 없습니다.'
+          message: '로그인이 필요합니다.'
         };
       }
 
@@ -90,6 +138,17 @@ export class AuthService {
       }
 
       const serverUserInfo = response.data.data;
+      
+      // 필수 정보 검증
+      if (!serverUserInfo.email || !serverUserInfo.role) {
+        console.error('[AuthService] 서버 사용자 정보에 필수 데이터 누락');
+        return {
+          success: false,
+          needsLogin: true,
+          message: '사용자 정보가 올바르지 않습니다.'
+        };
+      }
+
       console.log('[AuthService] 서버 사용자 정보:', {
         email: serverUserInfo.email,
         role: serverUserInfo.role
@@ -133,7 +192,7 @@ export class AuthService {
         return {
           success: false,
           needsLogin: true,
-          message: '인증이 만료되었습니다.'
+          message: '인증이 만료되었습니다. 다시 로그인해주세요.'
         };
       }
 
@@ -161,7 +220,7 @@ export class AuthService {
   }
 
   /**
-   * 로그아웃 (기존 logout)
+   * 로그아웃
    */
   static async logout() {
     try {
@@ -204,40 +263,44 @@ export class AuthService {
   }
 
   /**
-   * 사용자 데이터 초기화 (기존 clearUserData)
+   * 사용자 데이터 초기화
    */
   static async clearUserData() {
     try {
-      await storage.clearUserData();
-      console.log('[AuthService] 사용자 데이터 초기화 완료');
+      console.log('[AuthService] 사용자 데이터 초기화 시작');
+      const result = await storage.clearUserData();
+      console.log('[AuthService] 사용자 데이터 초기화 완료:', result);
+      return result;
     } catch (error) {
       console.error('[AuthService] 사용자 데이터 초기화 오류:', error);
+      // 에러가 발생해도 throw하지 않음 (앱이 중단되지 않도록)
+      return false;
     }
   }
 
   /**
-   * 현재 사용자 정보 가져오기 (기존 getCurrentUser)
+   * 현재 사용자 정보 가져오기
    */
   static async getCurrentUser() {
     return await storage.getUserInfo();
   }
 
   /**
-   * 마지막 동기화 시간 확인 (기존 getLastSyncTime)
+   * 마지막 동기화 시간 확인
    */
   static async getLastSyncTime() {
     return await storage.getLastSync();
   }
 
   /**
-   * 동기화가 필요한지 확인 (기존 needsSync)
+   * 동기화가 필요한지 확인
    */
   static async needsSync() {
     return await storageHelpers.needsSync();
   }
 
   /**
-   * 사용자 프로필 업데이트 (기존 updateUserProfile)
+   * 사용자 프로필 업데이트
    */
   static async updateUserProfile(profileData) {
     try {
@@ -268,7 +331,7 @@ export class AuthService {
   }
 
   /**
-   * 면허 정보 업데이트 (기존 updateLicenseInfo)
+   * 면허 정보 업데이트
    */
   static async updateLicenseInfo(licenseData) {
     try {
@@ -308,7 +371,7 @@ export class AuthService {
   }
 
   /**
-   * 로그인 상태 확인 (기존 isLoggedIn)
+   * 로그인 상태 확인
    */
   static async isLoggedIn() {
     return await storageHelpers.isLoggedIn();
@@ -326,7 +389,7 @@ export class AuthService {
   }
 
   /**
-   * 자동 로그아웃 (기존 forceLogout)
+   * 자동 로그아웃
    */
   static async forceLogout(reason = '인증이 만료되었습니다.') {
     console.log('[AuthService] 강제 로그아웃:', reason);
@@ -342,7 +405,7 @@ export class AuthService {
   }
 
   /**
-   * 사용자 정보 변경 감지 (기존 detectUserChanges)
+   * 사용자 정보 변경 감지
    */
   static _detectUserChanges(localInfo, serverInfo) {
     if (!localInfo) return true;
@@ -366,7 +429,7 @@ export class AuthService {
   }
 
   /**
-   * 운전면허 정보 변경 감지 (기존 detectLicenseChanges)
+   * 운전면허 정보 변경 감지
    */
   static _detectLicenseChanges(localLicense, serverLicense) {
     // 둘 다 없으면 변경 없음
@@ -403,39 +466,3 @@ export class AuthService {
     return false;
   }
 }
-
-
-/** 
-   * 면허 정보 검증 상태 확인 (프로젝트 MVP에 해당하지 않으므로 미사용 조치)
-   */
-  // static async checkLicenseVerification() {
-  //   try {
-  //     const response = await driverAPI.checkLicenseVerification();
-
-  //     return {
-  //       success: true,
-  //       isVerified: response.data?.data?.isVerified || false,
-  //       verifiedAt: response.data?.data?.verifiedAt,
-  //       expiryDate: response.data?.data?.expiryDate
-  //     };
-  //   } catch (error) {
-  //     console.error('[AuthService] 면허 검증 상태 확인 오류:', error);
-
-  //     // 로컬 정보에서 확인
-  //     const user = await this.getCurrentUser();
-  //     if (user?.licenseInfo) {
-  //       return {
-  //         success: true,
-  //         isVerified: user.licenseInfo.isVerified || false,
-  //         verifiedAt: user.licenseInfo.verifiedAt,
-  //         expiryDate: user.licenseInfo.licenseExpiryDate,
-  //         isOffline: true
-  //       };
-  //     }
-
-  //     return {
-  //       success: false,
-  //       isVerified: false
-  //     };
-  //   }
-  // }
