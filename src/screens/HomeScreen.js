@@ -20,136 +20,131 @@ import {
   SPACING,
 } from '../constants/theme';
 
-// 🔄 OperationPlanService 사용
 import OperationPlanService from '../services/operationPlanService';
 import { storage } from '../utils/storage';
-
-import DriveStatusCard from '../components/DriveStatusCard';
 import BottomTabBar from '../components/BottomTabBar';
-import { isDrivePreparationTime } from '../utils/driveTimeUtils';
 
 const HomeScreen = ({ navigation }) => {
   const [userInfo, setUserInfo] = useState(null);
   const [driveSchedules, setDriveSchedules] = useState([]);
-  const [activeTab, setActiveTab] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
-  const [weather, setWeather] = useState({ temp: '23°C', condition: '맑음' });
   const [activeBottomTab, setActiveBottomTab] = useState('home');
 
   // 화면 로드 시 초기 데이터 로드
   useEffect(() => {
-    const initializeData = async () => {
-      try {
-        setInitialLoading(true);
-
-        // storage 헬퍼 사용
-        const storedUserInfo = await storage.getUserInfo();
-        if (storedUserInfo) {
-          setUserInfo(storedUserInfo);
-          console.log('[HomeScreen] 저장된 사용자 정보 로드:', storedUserInfo.email);
-        } else {
-          // 저장된 사용자 정보가 없으면 로그인 화면으로 이동
-          console.error('[HomeScreen] 저장된 사용자 정보 없음');
-          Alert.alert('오류', '사용자 정보를 찾을 수 없습니다. 다시 로그인해주세요.');
-          navigation.replace('Login');
-          return;
-        }
-
-        // 이후 다른 데이터 로드
-        await loadData();
-
-      } catch (error) {
-        console.error('[HomeScreen] 초기화 오류:', error);
-        Alert.alert('오류', '정보를 불러올 수 없습니다. 다시 로그인해주세요.');
-        navigation.replace('Login');
-      } finally {
-        setInitialLoading(false);
-      }
-    };
-
     initializeData();
-  }, [navigation]);
+  }, []);
 
-  const loadData = async () => {
+  const initializeData = async () => {
+    try {
+      setInitialLoading(true);
+
+      // 사용자 정보 로드
+      const storedUserInfo = await storage.getUserInfo();
+      if (storedUserInfo) {
+        setUserInfo(storedUserInfo);
+      } else {
+        Alert.alert('오류', '사용자 정보를 찾을 수 없습니다. 다시 로그인해주세요.');
+        navigation.replace('Login');
+        return;
+      }
+
+      // 운행 일정 로드
+      await loadTodaySchedules();
+
+    } catch (error) {
+      console.error('[HomeScreen] 초기화 오류:', error);
+      Alert.alert('오류', '정보를 불러올 수 없습니다. 다시 로그인해주세요.');
+      navigation.replace('Login');
+    } finally {
+      setInitialLoading(false);
+    }
+  };
+
+  const loadTodaySchedules = async () => {
     try {
       setRefreshing(true);
       
-      try {
-        // 운전자의 오늘 운행 일정 가져오기
-        const schedules = await OperationPlanService.getDriverTodaySchedules();
-        console.log('[HomeScreen] 오늘의 운행 일정:', schedules);
+      // 오늘의 운행 일정 가져오기
+      const schedules = await OperationPlanService.getDriverTodaySchedules();
+      
+      if (Array.isArray(schedules)) {
+        // 시간순으로 정렬
+        const sortedSchedules = schedules.sort((a, b) => {
+          return a.startTime.localeCompare(b.startTime);
+        });
         
-        // 빈 배열이어도 정상 처리
-        if (!Array.isArray(schedules)) {
-          console.warn('[HomeScreen] 일정이 배열이 아님:', schedules);
-          setDriveSchedules([]);
-          return;
-        }
-
-        console.log('[HomeScreen] 오늘의 운행 일정 개수:', schedules.length);
-
-        // 데이터 포맷팅
-        const formattedSchedules = OperationPlanService.formatScheduleList(schedules);
-
-        // 버튼 활성화 여부 계산
-        const schedulesWithButtonStatus = formattedSchedules.map(schedule => ({
-          ...schedule,
-          isButtonActive: isDrivePreparationTime(schedule.departureTime),
-        }));
-
-        setDriveSchedules(schedulesWithButtonStatus);
-      } catch (scheduleError) {
-        console.error('[HomeScreen] 운행 일정 로드 오류:', scheduleError);
-        // API 오류 시 빈 배열로 설정
+        setDriveSchedules(sortedSchedules);
+      } else {
         setDriveSchedules([]);
       }
-
     } catch (error) {
-      console.error('Error loading data:', error);
-      Alert.alert('데이터 로드 오류', '정보를 불러오는 중 문제가 발생했습니다.');
+      console.error('[HomeScreen] 운행 일정 로드 오류:', error);
+      setDriveSchedules([]);
+      Alert.alert('데이터 로드 오류', '운행 일정을 불러올 수 없습니다.');
     } finally {
       setRefreshing(false);
     }
   };
 
   const onRefresh = async () => {
-    await loadData();
+    await loadTodaySchedules();
   };
 
-  const handleStartDrive = async (driveId) => {
-    // 선택된 운행 정보 찾기
-    const selectedDrive = driveSchedules.find(drive => drive.id === driveId);
-
-    if (selectedDrive) {
-      // storage 헬퍼 사용
-      await storage.setCurrentDrive(selectedDrive);
-      // 운행 시작 화면으로 이동
-      navigation.navigate('StartDrive', { drive: selectedDrive });
-    } else {
-      Alert.alert('오류', '운행 정보를 찾을 수 없습니다.');
+  const handleSelectSchedule = async (schedule) => {
+    if (schedule.status === 'COMPLETED') {
+      Alert.alert('알림', '이미 완료된 운행입니다.');
+      return;
     }
+
+    if (schedule.status === 'IN_PROGRESS') {
+      // 이미 진행 중인 운행이면 운행 화면으로 이동
+      const currentDrive = await storage.getCurrentDrive();
+      if (currentDrive) {
+        navigation.navigate('Driving', { drive: currentDrive });
+      }
+      return;
+    }
+
+    // 운행 시작 화면으로 이동
+    navigation.navigate('StartDrive', { schedule });
   };
 
   const handleBottomTabPress = (tabId) => {
     setActiveBottomTab(tabId);
 
     switch (tabId) {
-      case 'home':
-        // 이미 홈 화면이므로 아무 작업도 하지 않음
-        break;
       case 'operationPlan':
         navigation.navigate('OperationPlan');
         break;
       case 'profile':
         navigation.navigate('Profile');
         break;
-      default:
-        break;
     }
   };
 
-  // 초기 로딩 중이면 로딩 화면 표시
+  const getScheduleStatus = (schedule) => {
+    switch (schedule.status) {
+      case 'COMPLETED':
+        return { text: '운행 완료', color: COLORS.grey };
+      case 'IN_PROGRESS':
+        return { text: '운행 중', color: COLORS.success };
+      case 'SCHEDULED':
+        const now = new Date();
+        const [hours, minutes] = schedule.startTime.split(':');
+        const startTime = new Date();
+        startTime.setHours(parseInt(hours), parseInt(minutes), 0);
+        
+        if (now >= startTime) {
+          return { text: '운행 대기', color: COLORS.warning };
+        }
+        return { text: '운행 예정', color: COLORS.primary };
+      default:
+        return { text: '상태 미정', color: COLORS.grey };
+    }
+  };
+
   if (initialLoading) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -176,71 +171,56 @@ const HomeScreen = ({ navigation }) => {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }>
-          {/* 운행 정보 섹션 */}
+          
           <View style={styles.driveSection}>
-            <Text style={styles.sectionTitle}>금일 운행 정보</Text>
+            <Text style={styles.sectionTitle}>오늘의 운행 일정</Text>
 
-            {/* 운행 탭 */}
-            {driveSchedules.length > 0 && (
-              <View style={styles.driveTabs}>
-                {driveSchedules.map((drive, index) => {
-                  // 출발 시간에서 시간 부분만 추출
-                  const timeMatch = drive.departureTime.match(/(\d+):(\d+)/);
-                  const displayTime = timeMatch ? `${timeMatch[1]}:${timeMatch[2]}` : `운행 ${index + 1}`;
-                  
-                  return (
-                    <TouchableOpacity
-                      key={drive.id}
-                      style={[
-                        styles.driveTab,
-                        activeTab === index && styles.activeTab,
-                      ]}
-                      onPress={() => setActiveTab(index)}>
-                      <Text
-                        style={[
-                          styles.driveTabText,
-                          activeTab === index && styles.activeTabText,
-                        ]}>
-                        {displayTime}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            )}
-
-            {/* 현재 선택된 운행 정보 */}
-            {driveSchedules.length > 0 ? (
-              <DriveStatusCard
-                drive={driveSchedules[activeTab]}
-                onPress={() => handleStartDrive(driveSchedules[activeTab].id)}
-                isActive={driveSchedules[activeTab].isButtonActive}
-              />
-            ) : (
+            {driveSchedules.length === 0 ? (
               <View style={styles.noDriveContainer}>
                 <Text style={styles.noDriveText}>
                   오늘은 예정된 운행이 없습니다.
                 </Text>
               </View>
+            ) : (
+              <View style={styles.scheduleList}>
+                {driveSchedules.map((schedule) => {
+                  const status = getScheduleStatus(schedule);
+                  
+                  return (
+                    <TouchableOpacity
+                      key={schedule.id}
+                      style={[
+                        styles.scheduleCard,
+                        schedule.status === 'COMPLETED' && styles.completedCard
+                      ]}
+                      onPress={() => handleSelectSchedule(schedule)}
+                      disabled={schedule.status === 'COMPLETED'}
+                    >
+                      <View style={styles.scheduleHeader}>
+                        <Text style={styles.busNumber}>버스 {schedule.busNumber}</Text>
+                        <View style={[styles.statusBadge, { backgroundColor: status.color }]}>
+                          <Text style={styles.statusText}>{status.text}</Text>
+                        </View>
+                      </View>
+                      
+                      <View style={styles.scheduleInfo}>
+                        <Text style={styles.timeText}>
+                          {schedule.startTime} - {schedule.endTime}
+                        </Text>
+                        {schedule.routeName && (
+                          <Text style={styles.routeText}>{schedule.routeName}</Text>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             )}
           </View>
 
-          {/* 안전 운행 팁 */}
-          <View style={styles.safetyTipsSection}>
-            <Text style={styles.sectionTitle}>안전 운행 팁</Text>
-            <View style={styles.safetyTipCard}>
-              <Text style={styles.safetyTipTitle}>안전벨트 착용 확인</Text>
-              <Text style={styles.safetyTipContent}>
-                모든 승객이 안전벨트를 착용했는지 출발 전 확인해주세요.
-              </Text>
-            </View>
-          </View>
-
-          {/* 하단 여백 */}
           <View style={styles.bottomPadding} />
         </ScrollView>
 
-        {/* 하단 탭 바 */}
         <BottomTabBar
           activeTab={activeBottomTab}
           onTabPress={handleBottomTabPress}
@@ -294,28 +274,6 @@ const styles = StyleSheet.create({
     color: COLORS.black,
     marginBottom: SPACING.md,
   },
-  driveTabs: {
-    flexDirection: 'row',
-    marginBottom: SPACING.md,
-  },
-  driveTab: {
-    paddingVertical: SPACING.xs,
-    paddingHorizontal: SPACING.md,
-    marginRight: SPACING.sm,
-    borderRadius: BORDER_RADIUS.round,
-    backgroundColor: COLORS.extraLightGrey,
-  },
-  activeTab: {
-    backgroundColor: COLORS.primary,
-  },
-  driveTabText: {
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.grey,
-  },
-  activeTabText: {
-    color: COLORS.white,
-    fontWeight: FONT_WEIGHT.medium,
-  },
   noDriveContainer: {
     padding: SPACING.lg,
     backgroundColor: COLORS.white,
@@ -329,31 +287,53 @@ const styles = StyleSheet.create({
     color: COLORS.grey,
     textAlign: 'center',
   },
-  safetyTipsSection: {
-    paddingHorizontal: SPACING.lg,
-    marginBottom: SPACING.lg,
+  scheduleList: {
+    gap: SPACING.sm,
   },
-  safetyTipCard: {
+  scheduleCard: {
     backgroundColor: COLORS.white,
     borderRadius: BORDER_RADIUS.md,
     padding: SPACING.lg,
-    borderLeftWidth: 3,
-    borderLeftColor: COLORS.primary,
     ...SHADOWS.small,
   },
-  safetyTipTitle: {
-    fontSize: FONT_SIZE.md,
-    fontWeight: FONT_WEIGHT.semiBold,
-    color: COLORS.black,
-    marginBottom: SPACING.xs,
+  completedCard: {
+    opacity: 0.6,
   },
-  safetyTipContent: {
+  scheduleHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+  },
+  busNumber: {
+    fontSize: FONT_SIZE.lg,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.black,
+  },
+  statusBadge: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  statusText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: FONT_WEIGHT.medium,
+  },
+  scheduleInfo: {
+    gap: SPACING.xs,
+  },
+  timeText: {
+    fontSize: FONT_SIZE.md,
+    color: COLORS.black,
+    fontWeight: FONT_WEIGHT.medium,
+  },
+  routeText: {
     fontSize: FONT_SIZE.sm,
     color: COLORS.grey,
-    lineHeight: 20,
   },
   bottomPadding: {
-    height: 70, // 바텀 탭 바 높이 + 여백
+    height: 80,
   },
 });
 
