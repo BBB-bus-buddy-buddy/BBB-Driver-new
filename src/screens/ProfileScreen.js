@@ -122,8 +122,15 @@ const ProfileScreen = ({ navigation }) => {
               console.error('[ProfileScreen] 로그아웃 오류:', error);
 
               // API 오류가 발생해도 로컬 스토리지 정리 후 로그인 화면으로 이동
-              await AuthService.clearUserData();
+              try {
+                await AuthService.clearUserData();
+              } catch (clearError) {
+                console.warn('[ProfileScreen] 데이터 정리 오류 (무시됨):', clearError);
+              }
+
               navigation.replace('Login');
+            } finally {
+              setLoading(false);
             }
           },
         },
