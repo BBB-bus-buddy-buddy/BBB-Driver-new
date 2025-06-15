@@ -15,13 +15,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, SHADOWS, SPACING } from '../constants/theme';
 import BottomTabBar from '../components/BottomTabBar';
 import { Calendar } from 'react-native-calendars';
-// 🔄 OperationPlanService 사용
 import OperationPlanService from '../services/operationPlanService';
-import { formatDateForAPI } from '../api/operationPlan';
 
 const OperationPlanScreen = ({ navigation }) => {
-  console.log('[OperationPlanScreen] OperationPlanService:', OperationPlanService);
-  
   const [schedules, setSchedules] = useState([]);
   const [selectedDate, setSelectedDate] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -42,18 +38,21 @@ const OperationPlanScreen = ({ navigation }) => {
     loadInitialData();
   }, []);
 
+  const formatDateForAPI = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const loadInitialData = async () => {
     try {
       setLoading(true);
       
-      // 먼저 오늘 날짜의 일정을 가져옴
+      // 오늘 날짜의 일정을 가져옴
       const todaySchedules = await OperationPlanService.getDriverTodaySchedules();
-      console.log('[OperationPlanScreen] 원본 응답:', todaySchedules);
       
-      // 배열인지 확인
       const schedulesArray = Array.isArray(todaySchedules) ? todaySchedules : [];
-      console.log('[OperationPlanScreen] 일정 배열:', schedulesArray);
-      
       const formattedSchedules = OperationPlanService.formatScheduleList(schedulesArray);
       setSchedules(formattedSchedules);
       
@@ -70,7 +69,7 @@ const OperationPlanScreen = ({ navigation }) => {
 
   const loadMonthSchedules = async () => {
     try {
-      // 현재 달의 운행 일정을 한 번에 조회
+      // 현재 달의 운행 일정을 조회
       const monthSchedules = await OperationPlanService.getDriverCurrentMonthSchedules();
       const formattedSchedules = OperationPlanService.formatScheduleList(monthSchedules);
       
@@ -78,7 +77,6 @@ const OperationPlanScreen = ({ navigation }) => {
       const marked = OperationPlanService.createCalendarMarkedDates(formattedSchedules);
       
       setMarkedDates(marked);
-      console.log('[OperationPlanScreen] 월간 일정 로드 완료:', formattedSchedules.length, '개');
       
     } catch (error) {
       console.error('[OperationPlanScreen] 월별 일정 로드 오류:', error);
@@ -100,7 +98,6 @@ const OperationPlanScreen = ({ navigation }) => {
       const schedulesArray = Array.isArray(dateSchedules) ? dateSchedules : [];
       const formattedSchedules = OperationPlanService.formatScheduleList(schedulesArray);
       setSchedules(formattedSchedules);
-      console.log(`[OperationPlanScreen] ${day.dateString} 일정:`, formattedSchedules.length, '개');
     } catch (error) {
       console.error('[OperationPlanScreen] 날짜별 일정 조회 오류:', error);
       Alert.alert('오류', '일정을 불러오는 중 문제가 발생했습니다.');
@@ -121,7 +118,6 @@ const OperationPlanScreen = ({ navigation }) => {
         const formattedDetail = OperationPlanService.formatScheduleData(detail);
         setSelectedScheduleDetail(formattedDetail);
       } else {
-        console.error('[OperationPlanScreen] 일정 상세 정보 없음');
         Alert.alert('오류', '일정 상세 정보를 불러올 수 없습니다.');
         setModalVisible(false);
       }
@@ -137,9 +133,6 @@ const OperationPlanScreen = ({ navigation }) => {
 
   const handleMonthChange = async (month) => {
     try {
-      console.log('[OperationPlanScreen] 월 변경:', month);
-      
-      // month 객체: { year: 2024, month: 12 }
       const monthSchedules = await OperationPlanService.getDriverMonthlySchedules(month.year, month.month);
       const formattedSchedules = OperationPlanService.formatScheduleList(monthSchedules);
       
@@ -147,7 +140,6 @@ const OperationPlanScreen = ({ navigation }) => {
       const marked = OperationPlanService.createCalendarMarkedDates(formattedSchedules);
       
       setMarkedDates(marked);
-      console.log(`[OperationPlanScreen] ${month.year}년 ${month.month}월 일정 로드 완료:`, formattedSchedules.length, '개');
       
     } catch (error) {
       console.error('[OperationPlanScreen] 월 변경 일정 로드 오류:', error);
@@ -210,7 +202,7 @@ const OperationPlanScreen = ({ navigation }) => {
                 <View style={styles.detailSection}>
                   <Text style={styles.detailLabel}>노선</Text>
                   <Text style={styles.detailValue}>
-                    {selectedScheduleDetail.route}
+                    {selectedScheduleDetail.routeName || '노선 정보 없음'}
                   </Text>
                 </View>
 
@@ -224,14 +216,14 @@ const OperationPlanScreen = ({ navigation }) => {
                 <View style={styles.detailSection}>
                   <Text style={styles.detailLabel}>출발 시간</Text>
                   <Text style={styles.detailValue}>
-                    {selectedScheduleDetail.departureTime}
+                    {new Date(selectedScheduleDetail.scheduledStart).toLocaleString('ko-KR')}
                   </Text>
                 </View>
 
                 <View style={styles.detailSection}>
                   <Text style={styles.detailLabel}>도착 시간</Text>
                   <Text style={styles.detailValue}>
-                    {selectedScheduleDetail.arrivalTime}
+                    {new Date(selectedScheduleDetail.scheduledEnd).toLocaleString('ko-KR')}
                   </Text>
                 </View>
 
@@ -332,15 +324,25 @@ const OperationPlanScreen = ({ navigation }) => {
                   <View style={styles.scheduleInfo}>
                     <View style={styles.infoRow}>
                       <Text style={styles.infoLabel}>노선:</Text>
-                      <Text style={styles.infoValue}>{schedule.route}</Text>
+                      <Text style={styles.infoValue}>{schedule.routeName || '노선 정보 없음'}</Text>
                     </View>
                     <View style={styles.infoRow}>
                       <Text style={styles.infoLabel}>출발:</Text>
-                      <Text style={styles.infoValue}>{schedule.departureTime}</Text>
+                      <Text style={styles.infoValue}>
+                        {new Date(schedule.scheduledStart).toLocaleTimeString('ko-KR', {
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </Text>
                     </View>
                     <View style={styles.infoRow}>
                       <Text style={styles.infoLabel}>도착:</Text>
-                      <Text style={styles.infoValue}>{schedule.arrivalTime}</Text>
+                      <Text style={styles.infoValue}>
+                        {new Date(schedule.scheduledEnd).toLocaleTimeString('ko-KR', {
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </Text>
                     </View>
                   </View>
 
