@@ -1,4 +1,4 @@
-// src/screens/StartDriveScreen.js 
+// src/screens/StartDriveScreen.js
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -11,11 +11,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, SHADOWS, SPACING } from '../constants/theme';
-import { driveAPI, canStartDrive, checkArrivalAtStart } from '../api/drive';
+import { driveAPI } from '../api/drive';
 import { 
   requestLocationPermission, 
-  getCurrentLocation, 
-  getRouteStartLocation 
+  getCurrentLocation
 } from '../services/locationService';
 
 const StartDriveScreen = ({ navigation, route }) => {
@@ -24,8 +23,6 @@ const StartDriveScreen = ({ navigation, route }) => {
   const [checkingLocation, setCheckingLocation] = useState(true);
   const [locationConfirmed, setLocationConfirmed] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(null);
-  const [startLocation, setStartLocation] = useState(null);
-  const [distance, setDistance] = useState(null);
   const [locationError, setLocationError] = useState(null);
 
   useEffect(() => {
@@ -50,34 +47,13 @@ const StartDriveScreen = ({ navigation, route }) => {
         return;
       }
 
-      // 출발지 위치 정보 가져오기 (실제로는 운행 일정에서 가져와야 함)
-      const routeStartLocation = getRouteStartLocation(drive.route);
-      if (!routeStartLocation) {
-        // API에서 출발지 정보 가져오기
-        if (drive.startLocation) {
-          setStartLocation(drive.startLocation);
-        } else {
-          setLocationError('출발지 정보를 찾을 수 없습니다.');
-          return;
-        }
-      } else {
-        setStartLocation(routeStartLocation);
-      }
-
       // 현재 위치 가져오기
       try {
         const location = await getCurrentLocation();
         setCurrentLocation(location);
-
-        // 출발지 도착 여부 확인 (50m 이내)
-        const arrivalCheck = checkArrivalAtStart(
-          location, 
-          startLocation || routeStartLocation || drive.startLocation
-        );
         
-        setLocationConfirmed(arrivalCheck.isArrived);
-        setDistance(arrivalCheck.distance);
-
+        // 백엔드에서 출발지 확인을 하므로 프론트엔드에서는 위치 권한만 확인
+        setLocationConfirmed(true);
       } catch (locError) {
         console.error('[StartDriveScreen] 위치 조회 오류:', locError);
         setLocationError('현재 위치를 확인할 수 없습니다.');
@@ -92,45 +68,61 @@ const StartDriveScreen = ({ navigation, route }) => {
   };
 
   const handleStartDrive = async () => {
-    // 운행 시작 가능 여부 확인
-    const startCheck = canStartDrive(drive.scheduledStart || drive.departureTime);
-    
-    if (!startCheck.canStart) {
-      // 조기 출발 확인
-      Alert.alert(
-        '운행 시작 확인',
-        startCheck.message + '\n조기 출발하시겠습니까?',
-        [
-          {
-            text: '아니오',
-            style: 'cancel'
-          },
-          {
-            text: '예',
-            onPress: () => startDrive(true) // 조기 출발
-          }
-        ],
-        { cancelable: false }
-      );
-    } else {
-      startDrive(false); // 정상 출발
-    }
-  };
-
-  const startDrive = async (isEarlyStart) => {
     try {
       setLoading(true);
 
       const requestData = {
         operationId: drive.id || drive.operationId,
-        isEarlyStart: isEarlyStart,
+        isEarlyStart: false, // 조기 출발 여부는 시간 확인 후 결정
         currentLocation: currentLocation ? {
           latitude: currentLocation.latitude,
           longitude: currentLocation.longitude,
-          timestamp: currentLocation.timestamp || Date.now()
+          timestamp: Date.now()
         } : null
       };
 
+      // 출발 시간 확인
+      const now = new Date();
+      const scheduledStart = new Date(drive.scheduledStart);
+      const timeDiff = (scheduledStart - now) / (1000 * 60); // 분 단위
+
+      if (timeDiff > 0) {
+        // 아직 출발 시간이 안됨
+        if (timeDiff <= 10) {
+          // 10분 이내면 조기 출발 가능
+          Alert.alert(
+            '조기 출발',
+            `예정 출발 시간까지 ${Math.ceil(timeDiff)}분 남았습니다. 조기 출발하시겠습니까?`,
+            [
+              { text: '취소', style: 'cancel', onPress: () => setLoading(false) },
+              { 
+                text: '조기 출발', 
+                onPress: async () => {
+                  requestData.isEarlyStart = true;
+                  await startDriveRequest(requestData);
+                }
+              }
+            ]
+          );
+          return;
+        } else {
+          Alert.alert('알림', `출발 시간까지 ${Math.ceil(timeDiff)}분 남았습니다.`);
+          setLoading(false);
+          return;
+        }
+      }
+
+      // 정상 출발
+      await startDriveRequest(requestData);
+    } catch (error) {
+      setLoading(false);
+      console.error('[StartDriveScreen] 운행 시작 오류:', error);
+      Alert.alert('오류', '운행을 시작할 수 없습니다. 다시 시도해주세요.');
+    }
+  };
+
+  const startDriveRequest = async (requestData) => {
+    try {
       const response = await driveAPI.startDrive(requestData);
 
       if (response.data.success) {
@@ -149,8 +141,12 @@ const StartDriveScreen = ({ navigation, route }) => {
       }
     } catch (error) {
       setLoading(false);
-      console.error('[StartDriveScreen] 운행 시작 오류:', error);
-      Alert.alert('오류', error.message || '운행을 시작할 수 없습니다. 다시 시도해주세요.');
+      
+      if (error.response?.data?.message) {
+        Alert.alert('운행 시작 실패', error.response.data.message);
+      } else {
+        Alert.alert('오류', error.message || '운행을 시작할 수 없습니다.');
+      }
     }
   };
 
@@ -180,24 +176,34 @@ const StartDriveScreen = ({ navigation, route }) => {
           <View style={styles.driveInfoCard}>
             <Text style={styles.busNumber}>{drive.busNumber}</Text>
             <View style={styles.routeInfo}>
-              <Text style={styles.routeText}>{drive.route || drive.routeName}</Text>
+              <Text style={styles.routeText}>{drive.routeName || '노선 정보 없음'}</Text>
             </View>
             <View style={styles.timeInfo}>
               <View style={styles.timeItem}>
                 <Text style={styles.timeLabel}>출발 시간</Text>
-                <Text style={styles.timeValue}>{drive.departureTime}</Text>
+                <Text style={styles.timeValue}>
+                  {new Date(drive.scheduledStart).toLocaleTimeString('ko-KR', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}
+                </Text>
               </View>
               <View style={styles.timeDivider} />
               <View style={styles.timeItem}>
                 <Text style={styles.timeLabel}>도착 예정</Text>
-                <Text style={styles.timeValue}>{drive.arrivalTime}</Text>
+                <Text style={styles.timeValue}>
+                  {new Date(drive.scheduledEnd).toLocaleTimeString('ko-KR', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}
+                </Text>
               </View>
             </View>
           </View>
 
           <View style={styles.locationCheckCard}>
             <Text style={styles.locationCheckTitle}>
-              출발지 도착 확인
+              출발 준비 확인
             </Text>
 
             {checkingLocation ? (
@@ -209,10 +215,6 @@ const StartDriveScreen = ({ navigation, route }) => {
               </View>
             ) : locationError ? (
               <View style={styles.errorContainer}>
-                <Image
-                  source={require('../assets/location-error.png')}
-                  style={styles.errorIcon}
-                />
                 <Text style={styles.errorText}>{locationError}</Text>
                 <TouchableOpacity 
                   style={styles.retryButton} 
@@ -223,49 +225,20 @@ const StartDriveScreen = ({ navigation, route }) => {
               </View>
             ) : locationConfirmed ? (
               <View style={styles.confirmedContainer}>
-                <Image
-                  source={require('../assets/location-confirmed.png')}
-                  style={styles.confirmedIcon}
-                />
                 <Text style={styles.confirmedText}>
-                  출발 지점에 도착했습니다!
-                </Text>
-                <Text style={styles.locationName}>
-                  {startLocation?.name}
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.notConfirmedContainer}>
-                <Image
-                  source={require('../assets/location-error.png')}
-                  style={styles.warningIcon}
-                />
-                <Text style={styles.warningText}>
-                  출발 지점에서 {distance}m 떨어져 있습니다.
+                  위치 확인 완료
                 </Text>
                 <Text style={styles.locationInstruction}>
-                  {startLocation?.name}(으)로 이동해주세요.
+                  출발지 도착 확인은 운행 시작 시 자동으로 진행됩니다.
                 </Text>
-                <Text style={styles.distanceHint}>
-                  (50m 이내로 접근하세요)
-                </Text>
-                <TouchableOpacity 
-                  style={styles.refreshButton} 
-                  onPress={handleRefreshLocation}
-                >
-                  <Text style={styles.refreshButtonText}>위치 다시 확인</Text>
-                </TouchableOpacity>
               </View>
-            )}
+            ) : null}
           </View>
 
-          {startLocation && (
+          {drive.startLocation && (
             <View style={styles.locationInfoCard}>
               <Text style={styles.locationInfoTitle}>출발지 정보</Text>
-              <Text style={styles.locationInfoText}>{startLocation.name}</Text>
-              {startLocation.address && (
-                <Text style={styles.locationInfoAddress}>{startLocation.address}</Text>
-              )}
+              <Text style={styles.locationInfoText}>{drive.startLocation.name}</Text>
             </View>
           )}
         </View>
@@ -280,9 +253,7 @@ const StartDriveScreen = ({ navigation, route }) => {
             disabled={!canStart}
           >
             <Text style={styles.startButtonText}>
-              {loading ? '운행 시작 중...' : 
-               !locationConfirmed ? '출발지에 도착 후 시작 가능' : 
-               '운행 시작'}
+              {loading ? '운행 시작 중...' : '운행 시작'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -403,11 +374,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: SPACING.sm,
   },
-  confirmedIcon: {
-    width: 60,
-    height: 60,
-    marginBottom: SPACING.md,
-  },
   confirmedText: {
     fontSize: FONT_SIZE.md,
     color: COLORS.primary,
@@ -415,44 +381,11 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     fontWeight: FONT_WEIGHT.semiBold,
   },
-  locationName: {
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.grey,
-    marginTop: SPACING.xs,
-  },
-  notConfirmedContainer: {
-    alignItems: 'center',
-    padding: SPACING.sm,
-  },
-  warningIcon: {
-    width: 60,
-    height: 60,
-    marginBottom: SPACING.md,
-  },
-  warningText: {
-    fontSize: FONT_SIZE.md,
-    color: COLORS.warning,
-    textAlign: 'center',
-    lineHeight: 22,
-    fontWeight: FONT_WEIGHT.medium,
-  },
   locationInstruction: {
     fontSize: FONT_SIZE.sm,
     color: COLORS.grey,
     textAlign: 'center',
     marginTop: SPACING.xs,
-  },
-  distanceHint: {
-    fontSize: FONT_SIZE.xs,
-    color: COLORS.lightGrey,
-    textAlign: 'center',
-    marginTop: SPACING.xs,
-    marginBottom: SPACING.md,
-  },
-  errorIcon: {
-    width: 60,
-    height: 60,
-    marginBottom: SPACING.md,
   },
   errorText: {
     fontSize: FONT_SIZE.md,
@@ -472,17 +405,6 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.sm,
     fontWeight: FONT_WEIGHT.medium,
   },
-  refreshButton: {
-    backgroundColor: COLORS.secondary,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.sm,
-  },
-  refreshButtonText: {
-    color: COLORS.primary,
-    fontSize: FONT_SIZE.sm,
-    fontWeight: FONT_WEIGHT.medium,
-  },
   locationInfoCard: {
     backgroundColor: COLORS.white,
     borderRadius: BORDER_RADIUS.md,
@@ -498,11 +420,6 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.md,
     color: COLORS.black,
     fontWeight: FONT_WEIGHT.medium,
-    marginBottom: SPACING.xs,
-  },
-  locationInfoAddress: {
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.grey,
   },
   bottomContainer: {
     padding: SPACING.md,

@@ -1,46 +1,55 @@
-// src/screens/EndDriveScreen.js - 업데이트된 버전
+// src/screens/EndDriveScreen.js
 import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Image,
   ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, SHADOWS, SPACING } from '../constants/theme';
-import { DriveService } from '../services';
+import { driveAPI } from '../api/drive';
 
 const EndDriveScreen = ({ navigation, route }) => {
   const { drive } = route.params;
   const [hasNextDrive, setHasNextDrive] = useState(false);
   const [nextDrive, setNextDrive] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-  // 다음 운행 일정 확인
-    const checkNextDrive = async () => {
-      try {
-        const nextDriveData = await DriveService.getNextDriveSchedule(drive);
+    // 다음 운행 일정 확인
+    checkNextDrive();
+  }, []);
 
-        if (nextDriveData) {
-          setHasNextDrive(true);
-          setNextDrive(nextDriveData);
-        } else {
-          setHasNextDrive(false);
-        }
-      } catch (error) {
-        console.log('[EndDriveScreen] 다음 운행 일정 확인 오류:', error);
+  const checkNextDrive = async () => {
+    try {
+      setLoading(true);
+      
+      const response = await driveAPI.getNextDrive({
+        currentOperationId: drive.operationId || drive.id,
+        busNumber: drive.busNumber
+      });
+
+      if (response.data.success && response.data.data) {
+        setHasNextDrive(true);
+        setNextDrive(response.data.data);
+      } else {
         setHasNextDrive(false);
       }
-    };
-
-    checkNextDrive();
-  }, [drive]);
+    } catch (error) {
+      console.log('[EndDriveScreen] 다음 운행 일정 확인 오류:', error);
+      setHasNextDrive(false);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleGoToNextDrive = () => {
-    // 다음 운행 시작 화면으로 이동
-    navigation.replace('StartDrive', { drive: nextDrive });
+    if (nextDrive) {
+      // 다음 운행 시작 화면으로 이동
+      navigation.replace('StartDrive', { drive: nextDrive });
+    }
   };
 
   const handleGoHome = () => {
@@ -48,14 +57,28 @@ const EndDriveScreen = ({ navigation, route }) => {
     navigation.replace('Home');
   };
 
+  // 운행 시간 계산
+  const calculateDuration = () => {
+    if (drive.actualStart && drive.actualEnd) {
+      const start = new Date(drive.actualStart);
+      const end = new Date(drive.actualEnd);
+      const diffMs = end - start;
+      
+      const hours = Math.floor(diffMs / (1000 * 60 * 60));
+      const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+      
+      if (hours > 0) {
+        return `${hours}시간 ${minutes}분`;
+      }
+      return `${minutes}분`;
+    }
+    return '-';
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
         <View style={styles.header}>
-          <Image
-            source={require('../assets/complete-icon.png')}
-            style={styles.completeIcon}
-          />
           <Text style={styles.headerTitle}>운행이 종료되었습니다</Text>
           <Text style={styles.headerSubtitle}>수고하셨습니다!</Text>
         </View>
@@ -70,30 +93,40 @@ const EndDriveScreen = ({ navigation, route }) => {
 
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>노선</Text>
-            <Text style={styles.infoValue}>{drive.route}</Text>
+            <Text style={styles.infoValue}>{drive.routeName || '노선 정보 없음'}</Text>
           </View>
 
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>출발 시간</Text>
             <Text style={styles.infoValue}>
-              {new Date(drive.startTime).toLocaleString('ko-KR')}
+              {new Date(drive.actualStart || drive.scheduledStart).toLocaleString('ko-KR', {
+                month: 'numeric',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              })}
             </Text>
           </View>
 
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>도착 시간</Text>
             <Text style={styles.infoValue}>
-              {new Date(drive.endTime).toLocaleString('ko-KR')}
+              {new Date(drive.actualEnd || new Date()).toLocaleString('ko-KR', {
+                month: 'numeric',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              })}
             </Text>
           </View>
 
           <View style={styles.infoRowLast}>
             <Text style={styles.infoLabel}>운행 시간</Text>
-            <Text style={styles.infoValue}>{drive.duration}</Text>
+            <Text style={styles.infoValue}>{calculateDuration()}</Text>
           </View>
         </View>
 
-        {hasNextDrive && nextDrive && (
+        {!loading && hasNextDrive && nextDrive && (
           <View style={styles.nextDriveCard}>
             <Text style={styles.cardTitle}>다음 운행 정보</Text>
 
@@ -104,17 +137,27 @@ const EndDriveScreen = ({ navigation, route }) => {
 
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>노선</Text>
-              <Text style={styles.infoValue}>{nextDrive.route}</Text>
+              <Text style={styles.infoValue}>{nextDrive.routeName || '노선 정보 없음'}</Text>
             </View>
 
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>출발 시간</Text>
-              <Text style={styles.infoValue}>{nextDrive.departureTime}</Text>
+              <Text style={styles.infoValue}>
+                {new Date(nextDrive.scheduledStart).toLocaleTimeString('ko-KR', {
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
+              </Text>
             </View>
 
             <View style={styles.infoRowLast}>
               <Text style={styles.infoLabel}>도착 예정</Text>
-              <Text style={styles.infoValue}>{nextDrive.arrivalTime}</Text>
+              <Text style={styles.infoValue}>
+                {new Date(nextDrive.scheduledEnd).toLocaleTimeString('ko-KR', {
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
+              </Text>
             </View>
           </View>
         )}
@@ -126,7 +169,7 @@ const EndDriveScreen = ({ navigation, route }) => {
         </View>
 
         <View style={styles.buttonContainer}>
-          {hasNextDrive ? (
+          {hasNextDrive && nextDrive ? (
             <TouchableOpacity
               style={styles.nextDriveButton}
               onPress={handleGoToNextDrive}
@@ -161,11 +204,6 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     marginVertical: SPACING.xxxl,
-  },
-  completeIcon: {
-    width: 80,
-    height: 80,
-    marginBottom: SPACING.lg,
   },
   headerTitle: {
     fontSize: FONT_SIZE.xxl,
