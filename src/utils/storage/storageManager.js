@@ -1,87 +1,106 @@
+// src/utils/storage/storageManager.js
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { KEYS, CURRENT_STORAGE_VERSION } from './keys';
 
 /**
- * AsyncStorage 관리자 클래스
+ * AsyncStorage 관리자 클래스 - 안정적인 버전
  * 
  * @description
- * - AsyncStorage의 모든 작업을 중앙에서 관리
- * - 자동 초기화 및 에러 복구 기능 제공
- * - manifest.json 에러 등 iOS 특정 이슈 대응
- * 
- * @example
- * // 사용자 정보 저장
- * await storage.setUserInfo({ name: '홍길동', role: 'ROLE_DRIVER' });
- * 
- * // 사용자 정보 조회
- * const userInfo = await storage.getUserInfo();
- * console.log(userInfo.name); // '홍길동'
+ * - 무한 재귀 방지를 위한 초기화 플래그 개선
+ * - 필수 키가 없을 때 적절한 에러 처리
+ * - manifest.json 에러 대응
  */
 export class StorageManager {
   constructor() {
     this.isInitialized = false;
-    this.initPromise = null;
+    this.isInitializing = false; // 초기화 진행 중 플래그 추가
   }
 
   /**
    * 스토리지 초기화
-   * 
-   * @description
-   * - 앱 시작 시 자동으로 호출됨
-   * - 필수 디렉토리 구조 생성 및 기본값 설정
-   * - 버전 확인 및 마이그레이션 수행
-   * 
-   * @returns {Promise<boolean>} 초기화 성공 여부
-   * @throws {Error} 초기화 실패 시
    */
   async initialize() {
-    if (this.isInitialized) return true;
+    // 이미 초기화됨
+    if (this.isInitialized) {
+      return true;
+    }
     
-    if (this.initPromise) return this.initPromise;
+    // 초기화 진행 중이면 대기
+    if (this.isInitializing) {
+      console.log('[Storage] 초기화 진행 중... 대기');
+      // 초기화 완료까지 대기 (최대 5초)
+      let waitCount = 0;
+      while (this.isInitializing && waitCount < 50) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        waitCount++;
+      }
+      return this.isInitialized;
+    }
 
-    this.initPromise = this._performInitialization();
-    return this.initPromise;
-  }
-
-  /**
-   * 실제 초기화 수행 (내부 메서드)
-   * @private
-   */
-  async _performInitialization() {
+    // 초기화 시작
+    this.isInitializing = true;
+    
     try {
       console.log('[Storage] 초기화 시작...');
       
-      // 스토리지 버전 확인
-      const storedVersion = await AsyncStorage.getItem(KEYS.STORAGE_VERSION);
+      // 버전 확인 (await 제거하여 재귀 방지)
+      const storedVersion = await this._directGetItem(KEYS.STORAGE_VERSION);
       
       if (storedVersion !== CURRENT_STORAGE_VERSION) {
         console.log('[Storage] 버전 업데이트 필요:', storedVersion, '->', CURRENT_STORAGE_VERSION);
         await this._migrateStorage(storedVersion, CURRENT_STORAGE_VERSION);
+        await this._directSetItem(KEYS.STORAGE_VERSION, CURRENT_STORAGE_VERSION);
       }
 
-      // 필수 키들이 존재하는지 확인하고 없으면 기본값 설정
-      const essentialKeys = [
+      // 기본 배열 초기화 (운행 일정, 히스토리만)
+      const arrayKeys = [
         { key: KEYS.DRIVE_SCHEDULES, defaultValue: '[]' },
         { key: KEYS.DRIVE_HISTORY, defaultValue: '[]' }
       ];
 
-      for (const { key, defaultValue } of essentialKeys) {
-        const value = await AsyncStorage.getItem(key);
+      for (const { key, defaultValue } of arrayKeys) {
+        const value = await this._directGetItem(key);
         if (value === null) {
-          await AsyncStorage.setItem(key, defaultValue);
-          console.log(`[Storage] 기본값 설정: ${key}`);
+          await this._directSetItem(key, defaultValue);
+          console.log(`[Storage] 배열 초기화: ${key}`);
         }
       }
-
-      // 버전 저장
-      await AsyncStorage.setItem(KEYS.STORAGE_VERSION, CURRENT_STORAGE_VERSION);
 
       this.isInitialized = true;
       console.log('[Storage] 초기화 완료');
       return true;
+      
     } catch (error) {
       console.error('[Storage] 초기화 실패:', error);
-      this.initPromise = null;
+      throw error;
+    } finally {
+      this.isInitializing = false;
+    }
+  }
+
+  /**
+   * 직접 AsyncStorage 접근 (초기화 체크 없이)
+   * @private
+   */
+  async _directGetItem(key) {
+    try {
+      return await AsyncStorage.getItem(key);
+    } catch (error) {
+      console.error(`[Storage] 직접 조회 실패: ${key}`, error);
+      return null;
+    }
+  }
+
+  /**
+   * 직접 AsyncStorage 저장 (초기화 체크 없이)
+   * @private
+   */
+  async _directSetItem(key, value) {
+    try {
+      await AsyncStorage.setItem(key, value);
+      return true;
+    } catch (error) {
+      console.error(`[Storage] 직접 저장 실패: ${key}`, error);
       throw error;
     }
   }
@@ -89,55 +108,60 @@ export class StorageManager {
   /**
    * 스토리지 마이그레이션
    * @private
-   * @param {string} fromVersion - 이전 버전
-   * @param {string} toVersion - 새 버전
    */
   async _migrateStorage(fromVersion, toVersion) {
     console.log(`[Storage] 마이그레이션: ${fromVersion} -> ${toVersion}`);
     // 향후 버전 업데이트 시 마이그레이션 로직 추가
-    // 예: 데이터 구조 변경, 키 이름 변경 등
   }
 
   /**
-   * 안전한 저장 메서드 (재시도 로직 포함)
+   * 안전한 저장 메서드
    * @private
-   * @param {string} key - 저장할 키
-   * @param {string} value - 저장할 값 (문자열)
-   * @param {number} retries - 재시도 횟수
-   * @returns {Promise<boolean>} 저장 성공 여부
    */
   async _safeSetItem(key, value, retries = 3) {
-    await this.initialize();
+    // 토큰과 사용자 정보는 초기화 없이도 저장 가능
+    const criticalKeys = [KEYS.TOKEN, KEYS.USER_INFO];
+    if (!criticalKeys.includes(key)) {
+      await this.initialize();
+    }
 
     for (let i = 0; i < retries; i++) {
       try {
+        console.log(`[Storage] 저장 시도: ${key} (${i + 1}/${retries})`);
         await AsyncStorage.setItem(key, value);
+        console.log(`[Storage] 저장 성공: ${key}`);
         return true;
       } catch (error) {
-        console.error(`[Storage] 저장 실패 (시도 ${i + 1}/${retries}):`, key, error);
+        console.error(`[Storage] 저장 실패 (시도 ${i + 1}/${retries}):`, key, error.message);
         
         if (error.message?.includes('manifest.json') && i < retries - 1) {
-          // manifest.json 에러인 경우 짧은 대기 후 재시도
           await new Promise(resolve => setTimeout(resolve, 100 * (i + 1)));
           continue;
         }
         
-        if (i === retries - 1) throw error;
+        if (i === retries - 1) {
+          throw error;
+        }
       }
     }
+    return false;
   }
 
   /**
    * 안전한 조회 메서드
    * @private
-   * @param {string} key - 조회할 키
-   * @returns {Promise<string|null>} 저장된 값 또는 null
    */
   async _safeGetItem(key) {
-    await this.initialize();
+    // 토큰과 사용자 정보는 초기화 없이도 조회 가능
+    const criticalKeys = [KEYS.TOKEN, KEYS.USER_INFO];
+    if (!criticalKeys.includes(key)) {
+      await this.initialize();
+    }
     
     try {
-      return await AsyncStorage.getItem(key);
+      const value = await AsyncStorage.getItem(key);
+      console.log(`[Storage] 조회 성공: ${key} = ${value ? '있음' : '없음'}`);
+      return value;
     } catch (error) {
       console.error(`[Storage] 조회 실패: ${key}`, error);
       return null;
@@ -147,14 +171,11 @@ export class StorageManager {
   /**
    * 안전한 삭제 메서드
    * @private
-   * @param {string} key - 삭제할 키
-   * @returns {Promise<boolean>} 삭제 성공 여부
    */
   async _safeRemoveItem(key) {
-    await this.initialize();
-    
     try {
       await AsyncStorage.removeItem(key);
+      console.log(`[Storage] 삭제 성공: ${key}`);
       return true;
     } catch (error) {
       console.error(`[Storage] 삭제 실패: ${key}`, error);
@@ -164,195 +185,137 @@ export class StorageManager {
 
   // ============== 토큰 관련 메서드 ==============
 
-  /**
-   * 인증 토큰 조회
-   */
   async getToken() {
+    console.log('[Storage] 토큰 조회 시작');
     const token = await this._safeGetItem(KEYS.TOKEN);
+    console.log('[Storage] 토큰 조회 결과:', token ? '있음' : '없음');
     return token;
   }
 
-  /**
-   * 인증 토큰 저장
-   */
   async setToken(token) {
-    return await this._safeSetItem(KEYS.TOKEN, token);
+    console.log('[Storage] 토큰 저장 시작');
+    if (!token) {
+      throw new Error('토큰이 없습니다');
+    }
+    const result = await this._safeSetItem(KEYS.TOKEN, token);
+    console.log('[Storage] 토큰 저장 결과:', result);
+    return result;
   }
 
-  /**
-   * 인증 토큰 삭제
-   */
   async removeToken() {
     return await this._safeRemoveItem(KEYS.TOKEN);
   }
 
   // ============== 사용자 정보 관련 메서드 ==============
 
-  /**
-   * 사용자 정보 조회
-   */
   async getUserInfo() {
     const data = await this._safeGetItem(KEYS.USER_INFO);
     return data ? JSON.parse(data) : null;
   }
 
-  /**
-   * 사용자 정보 저장
-   */
   async setUserInfo(userInfo) {
+    if (!userInfo) {
+      throw new Error('사용자 정보가 없습니다');
+    }
     return await this._safeSetItem(KEYS.USER_INFO, JSON.stringify(userInfo));
   }
 
-  /**
-   * 사용자 정보 삭제
-   */
   async removeUserInfo() {
     return await this._safeRemoveItem(KEYS.USER_INFO);
   }
 
   // ============== 운행 관련 메서드 ==============
 
-  /**
-   * 현재 진행 중인 운행 정보 조회
-   */
   async getCurrentDrive() {
     const data = await this._safeGetItem(KEYS.CURRENT_DRIVE);
     return data ? JSON.parse(data) : null;
   }
 
-  /**
-   * 현재 운행 정보 저장
-   */
   async setCurrentDrive(drive) {
     return await this._safeSetItem(KEYS.CURRENT_DRIVE, JSON.stringify(drive));
   }
 
-  /**
-   * 현재 운행 정보 삭제
-   */
   async removeCurrentDrive() {
     return await this._safeRemoveItem(KEYS.CURRENT_DRIVE);
   }
 
-  /**
-   * 마지막 완료된 운행 정보 조회
-   */
   async getCompletedDrive() {
     const data = await this._safeGetItem(KEYS.COMPLETED_DRIVE);
     return data ? JSON.parse(data) : null;
   }
 
-  /**
-   * 완료된 운행 정보 저장
-   */
   async setCompletedDrive(drive) {
     return await this._safeSetItem(KEYS.COMPLETED_DRIVE, JSON.stringify(drive));
   }
 
-  /**
-   * 운행 일정 목록 조회
-   */
   async getDriveSchedules() {
     const data = await this._safeGetItem(KEYS.DRIVE_SCHEDULES);
     return data ? JSON.parse(data) : [];
   }
 
-  /**
-   * 운행 일정 저장
-   */
   async setDriveSchedules(schedules) {
     return await this._safeSetItem(KEYS.DRIVE_SCHEDULES, JSON.stringify(schedules));
   }
 
-  /**
-   * 운행 기록 조회
-   */
   async getDriveHistory() {
     const data = await this._safeGetItem(KEYS.DRIVE_HISTORY);
     return data ? JSON.parse(data) : [];
   }
 
-  /**
-   * 운행 기록 저장
-   */
   async setDriveHistory(history) {
     return await this._safeSetItem(KEYS.DRIVE_HISTORY, JSON.stringify(history));
   }
 
   // ============== 동기화 & 추가 정보 관련 메서드 ==============
 
-  /**
-   * 마지막 동기화 시간 조회
-   */
   async getLastSync() {
     const data = await this._safeGetItem(KEYS.LAST_SYNC);
     return data ? new Date(data) : null;
   }
 
-  /**
-   * 마지막 동기화 시간 저장
-   */
   async setLastSync(dateString) {
     return await this._safeSetItem(KEYS.LAST_SYNC, dateString);
   }
 
-  /**
-   * 추가 정보 입력 완료 여부 조회
-   */
   async getHasAdditionalInfo() {
     const data = await this._safeGetItem(KEYS.HAS_ADDITIONAL_INFO);
     return data === 'true';
   }
 
-  /**
-   * 추가 정보 입력 완료 여부 저장
-   */
   async setHasAdditionalInfo(hasInfo) {
     return await this._safeSetItem(KEYS.HAS_ADDITIONAL_INFO, hasInfo ? 'true' : 'false');
   }
 
   // ============== 유틸리티 메서드 ==============
 
-  /**
-   * 사용자 관련 데이터 전체 삭제
-   * 
-   * @description 로그아웃 시 사용자 관련 모든 데이터 제거
-   * @usage AuthService.logout()에서 호출
-   */
   async clearUserData() {
-    await this.initialize();
+    console.log('[Storage] 사용자 데이터 삭제 시작');
     
-    try {
-      const userKeys = [
-        KEYS.TOKEN,
-        KEYS.USER_INFO,
-        KEYS.CURRENT_DRIVE,
-        KEYS.COMPLETED_DRIVE,
-        KEYS.LAST_SYNC,
-        KEYS.HAS_ADDITIONAL_INFO
-      ];
-      
-      await AsyncStorage.multiRemove(userKeys);
-      console.log('[Storage] 사용자 데이터 삭제 완료');
-      
-    } catch (error) {
-      console.error('[Storage] 사용자 데이터 삭제 오류:', error);
-      throw error;
+    const userKeys = [
+      KEYS.TOKEN,
+      KEYS.USER_INFO,
+      KEYS.CURRENT_DRIVE,
+      KEYS.COMPLETED_DRIVE,
+      KEYS.LAST_SYNC,
+      KEYS.HAS_ADDITIONAL_INFO
+    ];
+    
+    // 각각 개별적으로 삭제 (multiRemove 대신)
+    for (const key of userKeys) {
+      await this._safeRemoveItem(key);
     }
+    
+    console.log('[Storage] 사용자 데이터 삭제 완료');
+    return true;
   }
 
-  /**
-   * 모든 데이터 삭제
-   * 
-   * @description 앱 초기화 또는 디버깅 시 사용
-   * @warning 모든 데이터가 삭제되므로 주의 필요
-   */
   async clearAllData() {
     try {
+      console.log('[Storage] 전체 데이터 삭제 시작');
       await AsyncStorage.clear();
       this.isInitialized = false;
-      this.initPromise = null;
-      console.log('[Storage] 모든 데이터 삭제 완료');
+      this.isInitializing = false;
+      console.log('[Storage] 전체 데이터 삭제 완료');
       
       // 재초기화
       await this.initialize();
@@ -362,11 +325,6 @@ export class StorageManager {
     }
   }
 
-  /**
-   * 스토리지 상태 디버깅
-   * 
-   * @description 현재 저장된 모든 데이터 확인 (개발용)
-   */
   async debugStorageState() {
     const allKeys = await AsyncStorage.getAllKeys();
     const allData = {};
@@ -374,7 +332,7 @@ export class StorageManager {
     for (const key of allKeys) {
       try {
         const value = await AsyncStorage.getItem(key);
-        allData[key] = value;
+        allData[key] = value?.substring(0, 100) + (value?.length > 100 ? '...' : '');
       } catch (error) {
         allData[key] = `Error: ${error.message}`;
       }

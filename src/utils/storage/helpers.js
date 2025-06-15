@@ -21,7 +21,7 @@ export const storageHelpers = {
     try {
       const lastSync = await storage.getLastSync();
       if (!lastSync) return true;
-      
+
       const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
       return lastSync < fiveMinutesAgo;
     } catch (error) {
@@ -61,17 +61,29 @@ export const storageHelpers = {
   async validateStorage() {
     try {
       await storage.initialize();
-      
+
       // 기본 동작 테스트
+      const testKey = '_validation_test';
       const testData = { test: true, timestamp: new Date().toISOString() };
-      await storage._safeSetItem('_validation_test', JSON.stringify(testData));
-      const retrieved = await storage._safeGetItem('_validation_test');
-      await storage._safeRemoveItem('_validation_test');
-      
+
+      const setResult = await storage._safeSetItem(testKey, JSON.stringify(testData));
+      if (!setResult) {
+        return {
+          isValid: false,
+          error: 'Failed to set test item'
+        };
+      }
+
+      const retrieved = await storage._safeGetItem(testKey);
+      const removeResult = await storage._safeRemoveItem(testKey);
+
       return {
         isValid: retrieved !== null,
         version: CURRENT_STORAGE_VERSION,
-        initialized: storage.isInitialized
+        initialized: storage.isInitialized,
+        canWrite: setResult,
+        canRead: retrieved !== null,
+        canDelete: removeResult
       };
     } catch (error) {
       console.error('[Storage] 검증 실패:', error);
@@ -79,6 +91,35 @@ export const storageHelpers = {
         isValid: false,
         error: error.message
       };
+    }
+  },
+
+  /**
+   * 스토리지 복구 시도
+   * 
+   * @description manifest.json 에러 등 발생 시 스토리지 복구
+   * @returns {Promise<boolean>} 복구 성공 여부
+   */
+  async repairStorage() {
+    try {
+      console.log('[StorageHelpers] 스토리지 복구 시작');
+
+      // 스토리지 재초기화
+      storage.isInitialized = false;
+      storage.initPromise = null;
+
+      const initResult = await storage.initialize();
+
+      if (initResult) {
+        console.log('[StorageHelpers] 스토리지 복구 성공');
+        return true;
+      } else {
+        console.warn('[StorageHelpers] 스토리지 복구 실패');
+        return false;
+      }
+    } catch (error) {
+      console.error('[StorageHelpers] 스토리지 복구 오류:', error);
+      return false;
     }
   }
 };

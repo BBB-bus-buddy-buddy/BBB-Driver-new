@@ -1,3 +1,4 @@
+// src/utils/storage/index.js
 /**
  * Storage 모듈 메인 진입점
  * 
@@ -17,7 +18,6 @@ export { storageHelpers };
 // 디버깅용 export (개발 환경에서만 사용)
 export { KEYS, CURRENT_STORAGE_VERSION } from './keys';
 
-// 앱 시작 시 자동 초기화
-storage.initialize().catch(error => {
-  console.error('[Storage] 자동 초기화 실패:', error);
-});
+// 앱 시작 시 자동 초기화 제거
+// 각 메서드에서 필요할 때만 초기화되도록 함
+console.log('[Storage] 모듈 로드 완료');
