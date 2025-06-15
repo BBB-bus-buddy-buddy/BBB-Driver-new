@@ -23,6 +23,7 @@ const AppNavigator = () => {
   const [initError, setInitError] = useState(null);
 
   useEffect(() => {
+    // checkAuthStatus 함수 내의 에러 처리 부분 개선
     const checkAuthStatus = async () => {
       try {
         console.log('[AppNavigator] 앱 초기화 및 인증 상태 확인 중');
@@ -70,7 +71,15 @@ const AppNavigator = () => {
         } else if (syncResult.needsLogin) {
           // 인증 실패 또는 토큰 만료
           console.log('[AppNavigator] 인증 실패, 로그인 필요');
-          await AuthService.clearUserData();
+
+          // clearUserData를 안전하게 호출
+          try {
+            await AuthService.clearUserData();
+          } catch (clearError) {
+            console.error('[AppNavigator] 데이터 정리 오류:', clearError);
+            // 에러가 발생해도 계속 진행
+          }
+
           setInitialRouteName('Login');
         } else if (syncResult.isOffline) {
           // 오프라인 모드 - 로컬 정보로 진행
@@ -84,7 +93,15 @@ const AppNavigator = () => {
       } catch (error) {
         console.error('[AppNavigator] 인증 상태 확인 오류:', error);
         setInitError('앱 초기화 중 오류가 발생했습니다. 다시 시도해주세요.');
-        await AuthService.clearUserData();
+
+        // clearUserData를 안전하게 호출
+        try {
+          await AuthService.clearUserData();
+        } catch (clearError) {
+          console.error('[AppNavigator] 데이터 정리 오류:', clearError);
+          // 에러가 발생해도 계속 진행
+        }
+
         setInitialRouteName('Login');
       } finally {
         setIsLoading(false);
