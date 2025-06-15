@@ -16,6 +16,9 @@ import {
   requestLocationPermission, 
   getCurrentLocation
 } from '../services/locationService';
+import driverWebSocketService from '../services/webSocketService';
+import { storage } from '../utils/storage';
+import WebSocketStatus from '../components/WebSocketStatus';
 
 const StartDriveScreen = ({ navigation, route }) => {
   const { drive } = route.params;
@@ -24,10 +27,38 @@ const StartDriveScreen = ({ navigation, route }) => {
   const [locationConfirmed, setLocationConfirmed] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [locationError, setLocationError] = useState(null);
+  const [wsPreConnected, setWsPreConnected] = useState(false);
 
   useEffect(() => {
     checkLocationAndPermission();
+    preConnectWebSocket();
   }, []);
+
+  // WebSocket 사전 연결
+  const preConnectWebSocket = async () => {
+    try {
+      const userInfo = await storage.getUserInfo();
+      const organizationId = userInfo?.organizationId;
+
+      if (!organizationId) {
+        console.warn('[StartDriveScreen] 조직 ID를 찾을 수 없어 WebSocket 사전 연결 스킵');
+        return;
+      }
+
+      // WebSocket 미리 연결 (운행 시작 전)
+      await driverWebSocketService.connect(
+        drive.busNumber,
+        organizationId,
+        drive.id || drive.operationId
+      );
+
+      setWsPreConnected(true);
+      console.log('[StartDriveScreen] WebSocket 사전 연결 성공');
+    } catch (error) {
+      console.error('[StartDriveScreen] WebSocket 사전 연결 실패:', error);
+      // 실패해도 운행 시작은 가능하도록 함
+    }
+  };
 
   const checkLocationAndPermission = async () => {
     try {
@@ -155,6 +186,10 @@ const StartDriveScreen = ({ navigation, route }) => {
   };
 
   const handleGoBack = () => {
+    // WebSocket 연결 해제
+    if (wsPreConnected) {
+      driverWebSocketService.disconnect();
+    }
     navigation.goBack();
   };
 
@@ -169,7 +204,7 @@ const StartDriveScreen = ({ navigation, route }) => {
             <Text style={styles.backButtonText}>← 뒤로</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>운행 준비</Text>
-          <View style={{ width: 40 }} />
+          <WebSocketStatus />
         </View>
 
         <View style={styles.content}>
@@ -239,6 +274,13 @@ const StartDriveScreen = ({ navigation, route }) => {
             <View style={styles.locationInfoCard}>
               <Text style={styles.locationInfoTitle}>출발지 정보</Text>
               <Text style={styles.locationInfoText}>{drive.startLocation.name}</Text>
+            </View>
+          )}
+
+          {wsPreConnected && (
+            <View style={styles.wsStatusCard}>
+              <View style={styles.wsStatusIcon} />
+              <Text style={styles.wsStatusText}>실시간 통신 준비 완료</Text>
             </View>
           )}
         </View>
@@ -409,6 +451,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     borderRadius: BORDER_RADIUS.md,
     padding: SPACING.md,
+    marginBottom: SPACING.lg,
     ...SHADOWS.small,
   },
   locationInfoTitle: {
@@ -419,6 +462,26 @@ const styles = StyleSheet.create({
   locationInfoText: {
     fontSize: FONT_SIZE.md,
     color: COLORS.black,
+    fontWeight: FONT_WEIGHT.medium,
+  },
+  wsStatusCard: {
+    backgroundColor: COLORS.success + '20',
+    borderRadius: BORDER_RADIUS.sm,
+    padding: SPACING.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  wsStatusIcon: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.success,
+    marginRight: SPACING.xs,
+  },
+  wsStatusText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.success,
     fontWeight: FONT_WEIGHT.medium,
   },
   bottomContainer: {

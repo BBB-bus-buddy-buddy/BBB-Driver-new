@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, SHADOWS, SPACING } from '../constants/theme';
 import { driveAPI } from '../api/drive';
 import { startLocationTracking, stopLocationTracking } from '../services/locationService';
+import driverWebSocketService from '../services/webSocketService';
 import { storage } from '../utils/storage';
 
 const DrivingScreen = ({ navigation, route }) => {
@@ -22,6 +23,8 @@ const DrivingScreen = ({ navigation, route }) => {
   const [isNearDestination, setIsNearDestination] = useState(false);
   const [elapsedTime, setElapsedTime] = useState('00:00:00');
   const [locationTrackingId, setLocationTrackingId] = useState(null);
+  const [occupiedSeats, setOccupiedSeats] = useState(0);
+  const [wsConnected, setWsConnected] = useState(false);
   
   const appState = useRef(AppState.currentState);
   const locationUpdateInterval = useRef(null);
@@ -45,28 +48,72 @@ const DrivingScreen = ({ navigation, route }) => {
     return () => clearInterval(timer);
   }, [drive.actualStart, drive.scheduledStart]);
 
-  // 위치 추적 및 업데이트
+  // WebSocket 연결 및 위치 추적
   useEffect(() => {
     let currentLocation = null;
+
+    const initializeWebSocket = async () => {
+      try {
+        const userInfo = await storage.getUserInfo();
+        const organizationId = userInfo?.organizationId;
+
+        if (!organizationId) {
+          console.error('[DrivingScreen] 조직 ID를 찾을 수 없습니다');
+          return;
+        }
+
+        // WebSocket 연결
+        await driverWebSocketService.connect(
+          drive.busNumber,
+          organizationId,
+          drive.operationId || drive.id
+        );
+
+        setWsConnected(true);
+
+        // WebSocket 메시지 핸들러 등록
+        driverWebSocketService.on('busUpdate', handleBusUpdate);
+        driverWebSocketService.on('passengerBoarding', handlePassengerBoarding);
+
+      } catch (error) {
+        console.error('[DrivingScreen] WebSocket 연결 실패:', error);
+        Alert.alert('연결 오류', 'WebSocket 연결에 실패했습니다. 운행은 계속됩니다.');
+      }
+    };
 
     // 위치 추적 시작
     const watchId = startLocationTracking((location) => {
       currentLocation = location;
+      
+      // WebSocket으로 위치 전송
+      if (driverWebSocketService.checkConnection()) {
+        driverWebSocketService.updateCurrentLocation(location);
+        driverWebSocketService.sendLocationUpdate(location, occupiedSeats);
+      }
     });
 
     setLocationTrackingId(watchId);
 
-    // 5초마다 위치 업데이트
+    // 5초마다 서버 API로 위치 업데이트 (백업)
     locationUpdateInterval.current = setInterval(async () => {
       if (currentLocation) {
         await sendLocationUpdate(currentLocation);
       }
     }, 5000);
 
+    // WebSocket 초기화
+    initializeWebSocket();
+
     // 앱 상태 리스너
     const appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
 
     return () => {
+      // WebSocket 연결 해제
+      driverWebSocketService.off('busUpdate');
+      driverWebSocketService.off('passengerBoarding');
+      driverWebSocketService.disconnect();
+
+      // 위치 추적 중지
       if (locationTrackingId) {
         stopLocationTracking(locationTrackingId);
       }
@@ -77,15 +124,44 @@ const DrivingScreen = ({ navigation, route }) => {
     };
   }, []);
 
+  // WebSocket 메시지 핸들러들
+  const handleBusUpdate = (message) => {
+    console.log('[DrivingScreen] 버스 상태 업데이트:', message);
+    // 필요시 UI 업데이트
+  };
+
+  const handlePassengerBoarding = (message) => {
+    console.log('[DrivingScreen] 승객 탑승/하차:', message);
+    
+    const { action, userId } = message.data;
+    if (action === 'BOARD') {
+      setOccupiedSeats(prev => prev + 1);
+      // 알림 표시 (선택)
+      // Alert.alert('승객 탑승', `승객이 탑승했습니다`);
+    } else if (action === 'ALIGHT') {
+      setOccupiedSeats(prev => Math.max(0, prev - 1));
+      // Alert.alert('승객 하차', `승객이 하차했습니다`);
+    }
+  };
+
   // 앱 상태 변경 처리
   const handleAppStateChange = (nextAppState) => {
     if (appState.current === 'background' && nextAppState === 'active') {
       console.log('[DrivingScreen] 앱이 포그라운드로 전환됨');
+      
+      // WebSocket 재연결 확인
+      if (!driverWebSocketService.checkConnection()) {
+        driverWebSocketService.connect(
+          drive.busNumber,
+          drive.organizationId,
+          drive.operationId || drive.id
+        );
+      }
     }
     appState.current = nextAppState;
   };
 
-  // 위치 업데이트 전송
+  // 위치 업데이트 전송 (REST API 백업)
   const sendLocationUpdate = async (location) => {
     try {
       const requestData = {
@@ -163,6 +239,9 @@ const DrivingScreen = ({ navigation, route }) => {
 
   const completeEndDrive = async (endReason) => {
     try {
+      // WebSocket 연결 해제
+      driverWebSocketService.disconnect();
+      
       // 위치 추적 중지
       if (locationTrackingId) {
         stopLocationTracking(locationTrackingId);
@@ -203,6 +282,12 @@ const DrivingScreen = ({ navigation, route }) => {
       <View style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>운행 중</Text>
+          {wsConnected && (
+            <View style={styles.connectionStatus}>
+              <View style={styles.connectedDot} />
+              <Text style={styles.connectionText}>실시간 연결됨</Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.drivingStatusContainer}>
@@ -217,6 +302,11 @@ const DrivingScreen = ({ navigation, route }) => {
               <View style={styles.routeBadge}>
                 <Text style={styles.routeBadgeText}>{drive.routeName || '노선 정보 없음'}</Text>
               </View>
+            </View>
+
+            <View style={styles.seatInfoContainer}>
+              <Text style={styles.seatInfoLabel}>탑승 승객</Text>
+              <Text style={styles.seatInfoValue}>{occupiedSeats}명</Text>
             </View>
 
             <View style={styles.timeInfoContainer}>
@@ -303,6 +393,8 @@ const styles = StyleSheet.create({
     padding: SPACING.lg,
   },
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: SPACING.lg,
   },
@@ -310,6 +402,21 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.xl,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.black,
+  },
+  connectionStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  connectedDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.success,
+    marginRight: SPACING.xs,
+  },
+  connectionText: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.success,
   },
   drivingStatusContainer: {
     flex: 1,
@@ -358,6 +465,25 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.sm,
     color: COLORS.primary,
     fontWeight: FONT_WEIGHT.medium,
+  },
+  seatInfoContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: COLORS.lightGrey,
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  seatInfoLabel: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.grey,
+  },
+  seatInfoValue: {
+    fontSize: FONT_SIZE.md,
+    color: COLORS.black,
+    fontWeight: FONT_WEIGHT.semiBold,
   },
   timeInfoContainer: {
     flexDirection: 'row',
