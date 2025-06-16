@@ -12,8 +12,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, SHADOWS, SPACING } from '../constants/theme';
 import { driveAPI } from '../api/drive';
-import { 
-  requestLocationPermission, 
+import {
+  requestLocationPermission,
   getCurrentLocation
 } from '../services/locationService';
 import driverWebSocketService from '../services/webSocketService';
@@ -21,7 +21,9 @@ import { storage } from '../utils/storage';
 import WebSocketStatus from '../components/WebSocketStatus';
 
 const StartDriveScreen = ({ navigation, route }) => {
-  const { drive } = route.params;
+  // route.params가 없거나 drive가 없는 경우 처리
+  const drive = route?.params?.drive;
+
   const [loading, setLoading] = useState(false);
   const [checkingLocation, setCheckingLocation] = useState(true);
   const [locationConfirmed, setLocationConfirmed] = useState(false);
@@ -30,9 +32,42 @@ const StartDriveScreen = ({ navigation, route }) => {
   const [wsPreConnected, setWsPreConnected] = useState(false);
 
   useEffect(() => {
+    // drive 객체 유효성 검증
+    if (!drive) {
+      Alert.alert(
+        '오류',
+        '운행 정보를 불러올 수 없습니다.',
+        [{ text: '확인', onPress: () => navigation.goBack() }]
+      );
+      return;
+    }
+
+    // 필수 정보 검증
+    const busNumber = drive.busNumber || drive.busRealNumber;
+    if (!busNumber) {
+      console.error('[StartDriveScreen] busNumber is missing:', drive);
+      Alert.alert(
+        '오류',
+        '버스 정보가 올바르지 않습니다.',
+        [{ text: '확인', onPress: () => navigation.goBack() }]
+      );
+      return;
+    }
+
+    // operationId 검증
+    if (!drive.operationId && !drive.id) {
+      console.error('[StartDriveScreen] operationId is missing:', drive);
+      Alert.alert(
+        '오류',
+        '운행 ID가 올바르지 않습니다.',
+        [{ text: '확인', onPress: () => navigation.goBack() }]
+      );
+      return;
+    }
+
     checkLocationAndPermission();
     preConnectWebSocket();
-  }, []);
+  }, [drive]);
 
   // WebSocket 사전 연결
   const preConnectWebSocket = async () => {
@@ -45,9 +80,16 @@ const StartDriveScreen = ({ navigation, route }) => {
         return;
       }
 
+      // busNumber 확인 - busNumber가 없으면 busRealNumber 사용
+      const busNumber = drive.busNumber || drive.busRealNumber;
+      if (!busNumber) {
+        console.error('[StartDriveScreen] WebSocket 연결 실패 - busNumber 없음');
+        return;
+      }
+
       // WebSocket 미리 연결 (운행 시작 전)
       await driverWebSocketService.connect(
-        drive.busNumber || drive.busRealNumber,
+        busNumber,
         organizationId,
         drive.operationId || drive.id
       );
@@ -82,7 +124,7 @@ const StartDriveScreen = ({ navigation, route }) => {
       try {
         const location = await getCurrentLocation();
         setCurrentLocation(location);
-        
+
         // 백엔드에서 출발지 확인을 하므로 프론트엔드에서는 위치 권한만 확인
         setLocationConfirmed(true);
       } catch (locError) {
@@ -115,7 +157,7 @@ const StartDriveScreen = ({ navigation, route }) => {
       // 출발 시간 확인
       const now = new Date();
       let scheduledStart;
-      
+
       // departureTime 또는 startTime에서 시간 추출
       const timeStr = drive.startTime || drive.departureTime?.split(' ').pop();
       if (timeStr && drive.operationDate) {
@@ -143,8 +185,8 @@ const StartDriveScreen = ({ navigation, route }) => {
           `예정 출발 시간까지 ${Math.ceil(timeDiff)}분 남았습니다. 조기 출발하시겠습니까?`,
           [
             { text: '취소', style: 'cancel', onPress: () => setLoading(false) },
-            { 
-              text: '조기 출발', 
+            {
+              text: '조기 출발',
               onPress: async () => {
                 requestData.isEarlyStart = true;
                 await startDriveRequest(requestData);
@@ -170,7 +212,7 @@ const StartDriveScreen = ({ navigation, route }) => {
 
       if (response.data.success) {
         const driveData = response.data.data;
-        
+
         // 현재 운행 정보 저장
         const currentDriveInfo = {
           ...drive,
@@ -179,11 +221,11 @@ const StartDriveScreen = ({ navigation, route }) => {
           status: 'IN_PROGRESS',
           organizationId: drive.organizationId || (await storage.getUserInfo())?.organizationId
         };
-        
+
         await storage.setCurrentDrive(currentDriveInfo);
-        
+
         // 운행 중 화면으로 이동
-        navigation.replace('Driving', { 
+        navigation.replace('Driving', {
           drive: currentDriveInfo
         });
       } else {
@@ -191,7 +233,7 @@ const StartDriveScreen = ({ navigation, route }) => {
       }
     } catch (error) {
       setLoading(false);
-      
+
       if (error.response?.data?.message) {
         Alert.alert('운행 시작 실패', error.response.data.message);
       } else {
@@ -210,6 +252,11 @@ const StartDriveScreen = ({ navigation, route }) => {
       driverWebSocketService.disconnect();
     }
     navigation.goBack();
+  };
+
+  // 화면에 표시할 busNumber 가져오기 헬퍼 함수
+  const getBusNumber = () => {
+    return drive?.busNumber || drive?.busRealNumber || 'BUS-UNKNOWN';
   };
 
   // 운행 시작 버튼 활성화 조건
@@ -243,7 +290,7 @@ const StartDriveScreen = ({ navigation, route }) => {
 
         <View style={styles.content}>
           <View style={styles.driveInfoCard}>
-            <Text style={styles.busNumber}>{drive.busNumber || drive.busRealNumber}</Text>
+            <Text style={styles.busNumber}>{getBusNumber()}</Text>
             <View style={styles.routeInfo}>
               <Text style={styles.routeText}>{drive.route || drive.routeName || '노선 정보 없음'}</Text>
             </View>
@@ -285,8 +332,8 @@ const StartDriveScreen = ({ navigation, route }) => {
             ) : locationError ? (
               <View style={styles.errorContainer}>
                 <Text style={styles.errorText}>{locationError}</Text>
-                <TouchableOpacity 
-                  style={styles.retryButton} 
+                <TouchableOpacity
+                  style={styles.retryButton}
                   onPress={handleRefreshLocation}
                 >
                   <Text style={styles.retryButtonText}>다시 시도</Text>

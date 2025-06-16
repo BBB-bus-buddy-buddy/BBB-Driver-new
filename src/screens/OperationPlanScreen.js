@@ -33,7 +33,7 @@ const OperationPlanScreen = ({ navigation }) => {
     const today = new Date();
     const todayStr = formatDateForAPI(today);
     setSelectedDate(todayStr);
-    
+
     // 초기 데이터 로드
     loadInitialData();
   }, []);
@@ -48,17 +48,17 @@ const OperationPlanScreen = ({ navigation }) => {
   const loadInitialData = async () => {
     try {
       setLoading(true);
-      
+
       // 오늘 날짜의 일정을 가져옴
       const todaySchedules = await OperationPlanService.getDriverTodaySchedules();
-      
+
       const schedulesArray = Array.isArray(todaySchedules) ? todaySchedules : [];
       const formattedSchedules = OperationPlanService.formatScheduleList(schedulesArray);
       setSchedules(formattedSchedules);
-      
+
       // 이번 달의 일정이 있는 날짜들을 표시하기 위해 추가 로드
       await loadMonthSchedules();
-      
+
     } catch (error) {
       console.error('[OperationPlanScreen] 초기 데이터 로드 오류:', error);
       Alert.alert('오류', '일정을 불러오는 중 문제가 발생했습니다.');
@@ -72,12 +72,12 @@ const OperationPlanScreen = ({ navigation }) => {
       // 현재 달의 운행 일정을 조회
       const monthSchedules = await OperationPlanService.getDriverCurrentMonthSchedules();
       const formattedSchedules = OperationPlanService.formatScheduleList(monthSchedules);
-      
+
       // 캘린더 마킹 데이터 생성
       const marked = OperationPlanService.createCalendarMarkedDates(formattedSchedules);
-      
+
       setMarkedDates(marked);
-      
+
     } catch (error) {
       console.error('[OperationPlanScreen] 월별 일정 로드 오류:', error);
     }
@@ -91,7 +91,7 @@ const OperationPlanScreen = ({ navigation }) => {
 
   const handleDateSelect = async (day) => {
     setSelectedDate(day.dateString);
-    
+
     try {
       setLoading(true);
       const dateSchedules = await OperationPlanService.getDriverSchedulesByDate(day.dateString);
@@ -109,19 +109,37 @@ const OperationPlanScreen = ({ navigation }) => {
 
   const handleSchedulePress = async (schedule) => {
     try {
+      if (!schedule) {
+        Alert.alert('오류', '운행 정보가 올바르지 않습니다.');
+        return;
+      }
+
+      // busNumber 검증 - busNumber 또는 busRealNumber 중 하나는 있어야 함
+      if (!schedule.busNumber && !schedule.busRealNumber) {
+        Alert.alert('오류', '버스 정보가 올바르지 않습니다.');
+        return;
+      }
+
       setDetailLoading(true);
       setModalVisible(true);
-      
+
       // 상세 정보 조회
       const detail = await OperationPlanService.getScheduleDetail(schedule.operationId || schedule.id);
+      
       if (detail) {
         const formattedDetail = OperationPlanService.formatScheduleData(detail);
+        
+        // 상세 정보에도 busNumber가 없으면 기본값 설정
+        if (!formattedDetail.busNumber && !formattedDetail.busRealNumber) {
+          formattedDetail.busNumber = `BUS-${formattedDetail.busId || 'UNKNOWN'}`;
+        }
+        
         setSelectedScheduleDetail(formattedDetail);
       } else {
         Alert.alert('오류', '일정 상세 정보를 불러올 수 없습니다.');
         setModalVisible(false);
       }
-      
+
     } catch (error) {
       console.error('[OperationPlanScreen] 일정 상세 조회 오류:', error);
       Alert.alert('오류', '일정 상세 정보를 불러올 수 없습니다.');
@@ -135,12 +153,12 @@ const OperationPlanScreen = ({ navigation }) => {
     try {
       const monthSchedules = await OperationPlanService.getDriverMonthlySchedules(month.year, month.month);
       const formattedSchedules = OperationPlanService.formatScheduleList(monthSchedules);
-      
+
       // 캘린더 마킹 데이터 생성
       const marked = OperationPlanService.createCalendarMarkedDates(formattedSchedules);
-      
+
       setMarkedDates(marked);
-      
+
     } catch (error) {
       console.error('[OperationPlanScreen] 월 변경 일정 로드 오류:', error);
     }
@@ -238,8 +256,8 @@ const OperationPlanScreen = ({ navigation }) => {
                   <Text style={styles.detailLabel}>상태</Text>
                   <Text style={[styles.detailValue, styles.statusText]}>
                     {selectedScheduleDetail.status === 'SCHEDULED' ? '예정' :
-                     selectedScheduleDetail.status === 'IN_PROGRESS' ? '진행 중' :
-                     selectedScheduleDetail.status === 'COMPLETED' ? '완료' : '취소'}
+                      selectedScheduleDetail.status === 'IN_PROGRESS' ? '진행 중' :
+                        selectedScheduleDetail.status === 'COMPLETED' ? '완료' : '취소'}
                   </Text>
                 </View>
 
@@ -253,13 +271,37 @@ const OperationPlanScreen = ({ navigation }) => {
                 )}
 
                 <View style={styles.modalFooter}>
+                  {/* 운행 시작 가능한 상태인지 확인 */}
+                  {selectedScheduleDetail.status === 'SCHEDULED' && (
+                    <TouchableOpacity
+                      style={[styles.modalActionButton, styles.startDriveButton]}
+                      onPress={() => {
+                        // busNumber 확인 후 StartDriveScreen으로 이동
+                        const busNumber = selectedScheduleDetail.busNumber || 
+                                         selectedScheduleDetail.busRealNumber || 
+                                         `BUS-${selectedScheduleDetail.busId}`;
+                        
+                        const driveData = {
+                          ...selectedScheduleDetail,
+                          busNumber: busNumber, // busNumber 보장
+                          busRealNumber: selectedScheduleDetail.busRealNumber || busNumber
+                        };
+                        
+                        setModalVisible(false);
+                        setSelectedScheduleDetail(null);
+                        navigation.navigate('StartDrive', { drive: driveData });
+                      }}>
+                      <Text style={styles.modalActionButtonText}>운행 시작</Text>
+                    </TouchableOpacity>
+                  )}
+                  
                   <TouchableOpacity
-                    style={styles.modalActionButton}
+                    style={[styles.modalActionButton, styles.closeButton]}
                     onPress={() => {
                       setModalVisible(false);
                       setSelectedScheduleDetail(null);
                     }}>
-                    <Text style={styles.modalActionButtonText}>닫기</Text>
+                    <Text style={[styles.modalActionButtonText, styles.closeButtonText]}>닫기</Text>
                   </TouchableOpacity>
                 </View>
               </ScrollView>
@@ -274,14 +316,14 @@ const OperationPlanScreen = ({ navigation }) => {
     if (schedule.status === 'COMPLETED') return '완료';
     if (schedule.status === 'IN_PROGRESS') return '진행 중';
     if (schedule.status === 'CANCELLED') return '취소';
-    
+
     // SCHEDULED 상태일 때 시간 체크
     if (OperationPlanService.isToday(schedule.operationDate)) {
       if (OperationPlanService.isUpcoming(schedule.operationDate, schedule.startTime)) {
         return '곧 시작';
       }
     }
-    
+
     return '예정';
   };
 
@@ -354,7 +396,7 @@ const OperationPlanScreen = ({ navigation }) => {
               schedules.map((schedule, index) => {
                 const status = getScheduleStatus(schedule);
                 const statusColor = getStatusColor(status);
-                
+
                 return (
                   <TouchableOpacity
                     key={schedule.id || index}
@@ -619,18 +661,28 @@ const styles = StyleSheet.create({
   },
   modalFooter: {
     marginTop: SPACING.xl,
+    gap: SPACING.sm,
   },
   modalActionButton: {
-    backgroundColor: COLORS.primary,
     borderRadius: BORDER_RADIUS.sm,
     paddingVertical: SPACING.md,
     alignItems: 'center',
+    marginBottom: SPACING.sm,
+  },
+  startDriveButton: {
+    backgroundColor: COLORS.primary,
+  },
+  closeButton: {
+    backgroundColor: COLORS.lightGrey,
   },
   modalActionButtonText: {
     color: COLORS.white,
     fontSize: FONT_SIZE.md,
     fontWeight: FONT_WEIGHT.semiBold,
   },
+  closeButtonText: {
+    color: COLORS.black,
+  }
 });
 
 export default OperationPlanScreen;

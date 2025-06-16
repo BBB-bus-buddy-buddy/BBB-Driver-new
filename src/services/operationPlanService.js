@@ -49,14 +49,9 @@ class OperationPlanService {
       console.log('[OperationPlanService] API에서 오늘 운행 일정 조회');
       const response = await operationPlanAPI.getDriverTodaySchedules();
 
-      console.log('[OperationPlanService] API 원본 응답:', response);
-
       if (response.data && response.data.data !== undefined) {
-        // ApiResponse 구조: { data: [...], message: "..." }
         const schedules = response.data.data;
-
-        console.log('[OperationPlanService] 파싱된 일정 수:', schedules.length);
-        console.log('[OperationPlanService] 첫 번째 일정:', schedules[0]);
+        console.log('[OperationPlanService] 오늘 일정 개수:', schedules.length);
 
         // 캐시 업데이트
         this.cachedSchedules = schedules;
@@ -64,7 +59,7 @@ class OperationPlanService {
 
         return schedules;
       } else {
-        console.error('[OperationPlanService] 오늘 운행 일정 조회 실패:', response);
+        console.error('[OperationPlanService] 오늘 운행 일정 조회 실패');
         return [];
       }
     } catch (error) {
@@ -84,11 +79,11 @@ class OperationPlanService {
       const response = await operationPlanAPI.getDriverSchedulesByDate(formattedDate);
 
       if (response.data) {
-        const schedules = response.data.data || response.data || [];
-        console.log(`[OperationPlanService] ${formattedDate} 일정:`, schedules);
+        const schedules = response.data.data || [];
+        console.log(`[OperationPlanService] ${formattedDate} 일정 개수:`, schedules.length);
         return schedules;
       } else {
-        console.error('[OperationPlanService] 운행 일정 조회 실패: 응답 없음');
+        console.error('[OperationPlanService] 운행 일정 조회 실패');
         return [];
       }
     } catch (error) {
@@ -107,11 +102,11 @@ class OperationPlanService {
       const response = await operationPlanAPI.getDriverMonthlySchedules(year, month);
 
       if (response.data) {
-        const schedules = response.data.data || response.data || [];
+        const schedules = response.data.data || [];
         console.log(`[OperationPlanService] 월간 일정 개수:`, schedules.length);
         return schedules;
       } else {
-        console.error('[OperationPlanService] 월간 운행 일정 조회 실패: 응답 없음');
+        console.error('[OperationPlanService] 월간 운행 일정 조회 실패');
         return [];
       }
     } catch (error) {
@@ -130,11 +125,11 @@ class OperationPlanService {
       const response = await operationPlanAPI.getDriverCurrentMonthSchedules();
 
       if (response.data) {
-        const schedules = response.data.data || response.data || [];
+        const schedules = response.data.data || [];
         console.log('[OperationPlanService] 현재 월 일정 개수:', schedules.length);
         return schedules;
       } else {
-        console.error('[OperationPlanService] 현재 월 운행 일정 조회 실패: 응답 없음');
+        console.error('[OperationPlanService] 현재 월 운행 일정 조회 실패');
         return [];
       }
     } catch (error) {
@@ -153,11 +148,11 @@ class OperationPlanService {
       const response = await operationPlanAPI.getScheduleDetail(scheduleId);
 
       if (response.data) {
-        const detail = response.data.data || response.data || null;
+        const detail = response.data.data || null;
         console.log('[OperationPlanService] 일정 상세:', detail);
         return detail;
       } else {
-        console.error('[OperationPlanService] 운행 일정 상세 조회 실패: 응답 없음');
+        console.error('[OperationPlanService] 운행 일정 상세 조회 실패');
         return null;
       }
     } catch (error) {
@@ -168,29 +163,62 @@ class OperationPlanService {
 
   /**
    * 운행 일정 데이터 포맷팅
-   * 백엔드 응답을 프론트엔드 형식으로 변환
+   * 백엔드 DTO를 프론트엔드 형식으로 변환
    */
   formatScheduleData(schedule) {
+    if (!schedule) {
+      console.warn('[OperationPlanService] formatScheduleData: schedule is null or undefined');
+      return null;
+    }
+
+    // 날짜 유효성 검증
+    const operationDate = schedule.operationDate || null;
+    const startTime = schedule.startTime || null;
+    const endTime = schedule.endTime || null;
+
+    // 날짜가 유효하지 않은 경우 처리
+    if (!operationDate) {
+      console.warn('[OperationPlanService] operationDate is missing');
+    }
+
+    // busNumber 처리 - busNumber가 없으면 busRealNumber 사용, 둘 다 없으면 busId 기반으로 생성
+    let busNumber = schedule.busNumber;
+    if (!busNumber) {
+      if (schedule.busRealNumber) {
+        busNumber = schedule.busRealNumber;
+      } else if (schedule.busId) {
+        busNumber = `BUS-${schedule.busId.substring(0, 8)}`;
+        console.warn(`[OperationPlanService] busNumber missing, using busId: ${busNumber}`);
+      } else {
+        busNumber = 'BUS-UNKNOWN';
+        console.error('[OperationPlanService] No bus identifier found');
+      }
+    }
+
     return {
       id: schedule.id || schedule.operationId,
-      operationId: schedule.operationId,
+      operationId: schedule.operationId || schedule.id,
       busId: schedule.busId,
-      busNumber: schedule.busNumber || schedule.busRealNumber,
-      busRealNumber: schedule.busRealNumber,
+      busNumber: busNumber,
+      busRealNumber: schedule.busRealNumber || busNumber,
       driverId: schedule.driverId,
-      driverName: schedule.driverName,
+      driverName: schedule.driverName || '미배정',
       route: schedule.routeName || '미지정',
       routeId: schedule.routeId,
-      // 날짜와 시간 처리
-      departureTime: this.formatDateTime(schedule.operationDate, schedule.startTime),
-      arrivalTime: this.formatDateTime(schedule.operationDate, schedule.endTime),
-      operationDate: schedule.operationDate,
-      startTime: schedule.startTime,
-      endTime: schedule.endTime,
+      routeName: schedule.routeName || '미지정',
+      // 날짜와 시간 처리 - null safe
+      departureTime: operationDate && startTime ? 
+        this.formatDateTime(operationDate, startTime) : 
+        '시간 정보 없음',
+      arrivalTime: operationDate && endTime ? 
+        this.formatDateTime(operationDate, endTime) : 
+        '시간 정보 없음',
+      operationDate: operationDate || this.getCurrentDateString(),
+      startTime: startTime || '시간 미정',
+      endTime: endTime || '시간 미정',
       status: schedule.status || 'SCHEDULED',
       isRecurring: schedule.isRecurring || false,
       recurringWeeks: schedule.recurringWeeks || 0,
-      parentOperationId: schedule.parentOperationId,
       organizationId: schedule.organizationId,
       createdAt: schedule.createdAt,
       updatedAt: schedule.updatedAt
@@ -198,15 +226,51 @@ class OperationPlanService {
   }
 
   /**
+   * 현재 날짜를 YYYY-MM-DD 형식으로 반환
+   */
+  getCurrentDateString() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  /**
    * 날짜와 시간을 한국어 형식으로 변환
    */
   formatDateTime(date, time) {
-    if (!date || !time) return '';
+    if (!date || !time) {
+      return time || '시간 정보 없음';
+    }
 
-    const [year, month, day] = date.split('-');
-    const [hour, minute] = time.split(':');
+    try {
+      const dateParts = date.split('-');
+      if (dateParts.length !== 3) {
+        console.error('[OperationPlanService] Invalid date format:', date);
+        return time;
+      }
 
-    return `${year}년 ${parseInt(month)}월 ${parseInt(day)}일 ${hour}:${minute}`;
+      const [year, month, day] = dateParts;
+      const timeParts = time.split(':');
+      
+      if (timeParts.length < 2) {
+        console.error('[OperationPlanService] Invalid time format:', time);
+        return time;
+      }
+
+      const [hour, minute] = timeParts;
+
+      // 유효성 검증
+      if (!year || !month || !day || !hour || !minute) {
+        return time || '시간 정보 없음';
+      }
+
+      return `${year}년 ${parseInt(month)}월 ${parseInt(day)}일 ${hour}:${minute}`;
+    } catch (error) {
+      console.error('[OperationPlanService] formatDateTime error:', error);
+      return time || '시간 정보 없음';
+    }
   }
 
   /**

@@ -65,10 +65,10 @@ const HomeScreen = ({ navigation }) => {
   const loadTodaySchedules = async () => {
     try {
       setRefreshing(true);
-      
+
       // 오늘의 운행 일정 가져오기
       const schedules = await OperationPlanService.getDriverTodaySchedules();
-      
+
       if (Array.isArray(schedules)) {
         // 시간순으로 정렬
         const sortedSchedules = schedules.sort((a, b) => {
@@ -76,7 +76,7 @@ const HomeScreen = ({ navigation }) => {
           const timeB = b.startTime || b.departureTime;
           return timeA.localeCompare(timeB);
         });
-        
+
         // 포맷된 일정으로 변환
         const formattedSchedules = OperationPlanService.formatScheduleList(sortedSchedules);
         setDriveSchedules(formattedSchedules);
@@ -97,6 +97,12 @@ const HomeScreen = ({ navigation }) => {
   };
 
   const handleSelectSchedule = async (schedule) => {
+    // 필수 정보 검증
+    if (!schedule || !schedule.busNumber) {
+      Alert.alert('오류', '운행 정보가 올바르지 않습니다.');
+      return;
+    }
+
     if (schedule.status === 'COMPLETED') {
       Alert.alert('알림', '이미 완료된 운행입니다.');
       return;
@@ -113,22 +119,9 @@ const HomeScreen = ({ navigation }) => {
 
     // schedule 객체를 drive 형식으로 변환하여 전달
     const driveData = {
-      id: schedule.id,
-      operationId: schedule.operationId || schedule.id,
-      busNumber: schedule.busNumber,
-      busRealNumber: schedule.busRealNumber,
-      routeName: schedule.route || schedule.routeName,
-      routeId: schedule.routeId,
-      scheduledStart: schedule.departureTime,
-      scheduledEnd: schedule.arrivalTime,
-      startTime: schedule.startTime,
-      endTime: schedule.endTime,
-      operationDate: schedule.operationDate,
-      status: schedule.status,
-      driverId: schedule.driverId,
-      driverName: schedule.driverName,
-      organizationId: schedule.organizationId || userInfo?.organizationId,
-      ...schedule
+      ...schedule,
+      id: schedule.id || schedule.operationId,
+      organizationId: schedule.organizationId || userInfo?.organizationId
     };
 
     // 운행 시작 화면으로 이동
@@ -157,15 +150,15 @@ const HomeScreen = ({ navigation }) => {
       case 'SCHEDULED':
         const now = new Date();
         const startTimeStr = schedule.startTime || schedule.departureTime?.split(' ').pop();
-        
+
         if (startTimeStr) {
           const [hours, minutes] = startTimeStr.split(':');
           const startTime = new Date();
           startTime.setHours(parseInt(hours), parseInt(minutes), 0);
-          
+
           // 출발 1시간 전부터 운행 대기 상태
           const oneHourBefore = new Date(startTime.getTime() - 60 * 60 * 1000);
-          
+
           if (now >= oneHourBefore && now < startTime) {
             return { text: '운행 대기', color: COLORS.warning };
           } else if (now >= startTime) {
@@ -204,7 +197,7 @@ const HomeScreen = ({ navigation }) => {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }>
-          
+
           <View style={styles.driveSection}>
             <Text style={styles.sectionTitle}>오늘의 운행 일정</Text>
 
@@ -219,7 +212,7 @@ const HomeScreen = ({ navigation }) => {
                 {driveSchedules.map((schedule) => {
                   const status = getScheduleStatus(schedule);
                   const isActive = status.text === '운행 대기' || status.text === '출발 시간';
-                  
+
                   return (
                     <TouchableOpacity
                       key={schedule.id}
@@ -236,7 +229,7 @@ const HomeScreen = ({ navigation }) => {
                           <Text style={styles.statusText}>{status.text}</Text>
                         </View>
                       </View>
-                      
+
                       <View style={styles.scheduleInfo}>
                         <Text style={styles.timeText}>
                           {schedule.startTime} - {schedule.endTime}
