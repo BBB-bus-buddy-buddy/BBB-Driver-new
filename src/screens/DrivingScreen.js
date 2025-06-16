@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, SHADOWS, SPACING } from '../constants/theme';
 import { driveAPI } from '../api/drive';
 import { startLocationTracking, stopLocationTracking, getCurrentLocation } from '../services/locationService';
-import driverWebSocketService from '../services/webSocketService';
+import driverWebSocketService from '../services/driverWebSocketService';
 import { storage } from '../utils/storage';
 
 const DrivingScreen = ({ navigation, route }) => {
