@@ -300,7 +300,7 @@ export class AuthService {
   }
 
   /**
-   * 사용자 프로필 업데이트
+   * 운전자 프로필 업데이트
    */
   static async updateUserProfile(profileData) {
     try {
@@ -308,18 +308,20 @@ export class AuthService {
 
       if (response.data?.data) {
         // 로컬 정보도 업데이트
-        await storage.setUserInfo(response.data.data);
+        const currentUser = await this.getCurrentUser();
+        const updatedUser = { ...currentUser, ...response.data.data };
+        await storage.setUserInfo(updatedUser);
 
         return {
           success: true,
-          userInfo: response.data.data,
-          message: '프로필이 업데이트되었습니다.'
+          userInfo: updatedUser,
+          message: response.data.message || '프로필이 업데이트되었습니다.'
         };
       }
 
       return {
         success: false,
-        message: '프로필 업데이트에 실패했습니다.'
+        message: response.data?.message || '프로필 업데이트에 실패했습니다.'
       };
     } catch (error) {
       console.error('[AuthService] 프로필 업데이트 오류:', error);
@@ -353,13 +355,13 @@ export class AuthService {
         return {
           success: true,
           licenseInfo: response.data.data,
-          message: '면허 정보가 업데이트되었습니다.'
+          message: response.data.message || '면허 정보가 업데이트되었습니다.'
         };
       }
 
       return {
         success: false,
-        message: '면허 정보 업데이트에 실패했습니다.'
+        message: response.data?.message || '면허 정보 업데이트에 실패했습니다.'
       };
     } catch (error) {
       console.error('[AuthService] 면허 정보 업데이트 오류:', error);
@@ -446,11 +448,7 @@ export class AuthService {
       'licenseNumber',
       'licenseType',
       'licenseExpiryDate',
-      'licenseRegion',
-      'licenseYear',
-      'licenseUnique',
-      'licenseClass',
-      'serialNo',
+      'licenseSerial',
       'isVerified',
       'verifiedAt'
     ];
