@@ -28,6 +28,8 @@ const DrivingScreen = ({ navigation, route }) => {
   const [totalPassengers, setTotalPassengers] = useState(0);
   const [boardedCount, setBoardedCount] = useState(0);
   const [alightedCount, setAlightedCount] = useState(0);
+  const [distanceToDestination, setDistanceToDestination] = useState(null);
+  const [currentLocationInfo, setCurrentLocationInfo] = useState(null);
   
   const appState = useRef(AppState.currentState);
   const locationUpdateInterval = useRef(null);
@@ -57,12 +59,10 @@ const DrivingScreen = ({ navigation, route }) => {
 
     const initializeWebSocket = async () => {
       try {
-        // WebSocket이 이미 연결되어 있는지 확인
         if (driverWebSocketService.checkConnection()) {
           setWsConnected(true);
           console.log('[DrivingScreen] WebSocket 이미 연결됨');
         } else {
-          // 새로 연결 필요
           const userInfo = await storage.getUserInfo();
           const organizationId = drive.organizationId || userInfo?.organizationId;
 
@@ -71,7 +71,6 @@ const DrivingScreen = ({ navigation, route }) => {
             return;
           }
 
-          // WebSocket 연결
           await driverWebSocketService.connect(
             drive.busNumber || drive.busRealNumber,
             organizationId,
@@ -98,6 +97,7 @@ const DrivingScreen = ({ navigation, route }) => {
     // 위치 추적 시작
     const watchId = startLocationTracking((location) => {
       currentLocation = location;
+      setCurrentLocationInfo(location);
       
       // WebSocket으로 위치 전송
       if (driverWebSocketService.checkConnection()) {
@@ -105,7 +105,7 @@ const DrivingScreen = ({ navigation, route }) => {
         driverWebSocketService.sendLocationUpdate(location, occupiedSeats);
       }
 
-      // 목적지 근접 여부 확인 (예: 500m 이내)
+      // 목적지 근접 여부 확인
       if (drive.endLocation?.latitude && drive.endLocation?.longitude) {
         const distance = calculateDistance(
           location.latitude,
@@ -113,7 +113,8 @@ const DrivingScreen = ({ navigation, route }) => {
           drive.endLocation.latitude,
           drive.endLocation.longitude
         );
-        setIsNearDestination(distance < 0.5); // 0.5km = 500m
+        setDistanceToDestination(distance * 1000); // km를 m로 변환
+        setIsNearDestination(distance < 0.1); // 100m = 0.1km
       }
     });
 
@@ -175,14 +176,9 @@ const DrivingScreen = ({ navigation, route }) => {
       setOccupiedSeats(prev => prev + 1);
       setBoardedCount(prev => prev + 1);
       setTotalPassengers(prev => prev + 1);
-      
-      // 알림 표시 (선택)
-      // Alert.alert('승객 탑승', `승객이 탑승했습니다`);
     } else if (action === 'ALIGHT' || action === 'alight') {
       setOccupiedSeats(prev => Math.max(0, prev - 1));
       setAlightedCount(prev => prev + 1);
-      
-      // Alert.alert('승객 하차', `승객이 하차했습니다`);
     }
   };
 
@@ -265,6 +261,15 @@ const DrivingScreen = ({ navigation, route }) => {
 
   const toRad = (deg) => deg * (Math.PI/180);
 
+  // 거리 포맷팅
+  const formatDistance = (meters) => {
+    if (meters < 1000) {
+      return `${Math.round(meters)}m`;
+    } else {
+      return `${(meters / 1000).toFixed(1)}km`;
+    }
+  };
+
   // 뒤로가기 버튼 방지
   useEffect(() => {
     const backAction = () => {
@@ -286,10 +291,10 @@ const DrivingScreen = ({ navigation, route }) => {
   }, []);
 
   const handleEndDrive = async () => {
-    if (!isNearDestination) {
+    if (!isNearDestination && distanceToDestination !== null && distanceToDestination > 100) {
       Alert.alert(
         '목적지 도착 전',
-        '아직 목적지에 도착하지 않았습니다. 정말 운행을 종료하시겠습니까?',
+        `아직 목적지에서 ${formatDistance(distanceToDestination)} 떨어져 있습니다. 정말 운행을 종료하시겠습니까?`,
         [
           { text: '취소', style: 'cancel' },
           {
@@ -460,6 +465,21 @@ const DrivingScreen = ({ navigation, route }) => {
               {nextStopInfo.sequence !== undefined && nextStopInfo.totalStops && (
                 <Text style={styles.stopSequence}>
                   {nextStopInfo.sequence} / {nextStopInfo.totalStops} 정거장
+                </Text>
+              )}
+            </View>
+          )}
+
+          {/* 도착지 정보 카드 추가 */}
+          {drive.endLocation && (
+            <View style={[styles.destinationCard, isNearDestination && styles.nearDestinationCard]}>
+              <Text style={styles.destinationLabel}>도착지</Text>
+              <Text style={styles.destinationName}>
+                {drive.endLocation.name || '도착지'}
+              </Text>
+              {distanceToDestination !== null && (
+                <Text style={[styles.distanceText, isNearDestination && styles.nearDistanceText]}>
+                  남은 거리: {formatDistance(distanceToDestination)}
                 </Text>
               )}
             </View>
@@ -659,6 +679,38 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.xs,
     color: COLORS.grey,
     marginTop: SPACING.xs,
+  },
+  destinationCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.lg,
+    marginBottom: SPACING.lg,
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.primary,
+    ...SHADOWS.small,
+  },
+  nearDestinationCard: {
+    borderLeftColor: COLORS.success,
+    backgroundColor: COLORS.success + '10',
+  },
+  destinationLabel: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.grey,
+    marginBottom: SPACING.xs,
+  },
+  destinationName: {
+    fontSize: FONT_SIZE.lg,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.black,
+    marginBottom: SPACING.xs,
+  },
+  distanceText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.primary,
+    fontWeight: FONT_WEIGHT.medium,
+  },
+  nearDistanceText: {
+    color: COLORS.success,
   },
   arrivalNotice: {
     backgroundColor: COLORS.success,
