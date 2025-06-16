@@ -4,7 +4,8 @@ import apiClient from './client';
 export const operationPlanAPI = {
     /**
      * 운전자 오늘 운행 일정 조회
-     * @returns {Promise} API 응답
+     * GET /api/operation-plan/driver/today
+     * @returns {Promise} Response: ApiResponse<List<OperationPlanDTO>>
      */
     getDriverTodaySchedules: () => {
         return apiClient.get('/api/operation-plan/driver/today');
@@ -12,8 +13,9 @@ export const operationPlanAPI = {
 
     /**
      * 운전자 특정 날짜 운행 일정 조회
+     * GET /api/operation-plan/driver/{date}
      * @param {string} date 조회할 날짜 (YYYY-MM-DD 형식)
-     * @returns {Promise} API 응답
+     * @returns {Promise} Response: ApiResponse<List<OperationPlanDTO>>
      */
     getDriverSchedulesByDate: (date) => {
         return apiClient.get(`/api/operation-plan/driver/${date}`);
@@ -21,9 +23,10 @@ export const operationPlanAPI = {
 
     /**
      * 운전자 월간 운행 일정 조회
+     * GET /api/operation-plan/driver/monthly/{year}/{month}
      * @param {number} year 연도
      * @param {number} month 월 (1-12)
-     * @returns {Promise} API 응답
+     * @returns {Promise} Response: ApiResponse<List<OperationPlanDTO>>
      */
     getDriverMonthlySchedules: (year, month) => {
         return apiClient.get(`/api/operation-plan/driver/monthly/${year}/${month}`);
@@ -31,7 +34,8 @@ export const operationPlanAPI = {
 
     /**
      * 운전자 현재 월 운행 일정 조회
-     * @returns {Promise} API 응답
+     * GET /api/operation-plan/driver/monthly
+     * @returns {Promise} Response: ApiResponse<List<OperationPlanDTO>>
      */
     getDriverCurrentMonthSchedules: () => {
         return apiClient.get('/api/operation-plan/driver/monthly');
@@ -39,8 +43,9 @@ export const operationPlanAPI = {
 
     /**
      * 운행 일정 상세 조회
+     * GET /api/operation-plan/detail/{operationId}
      * @param {string} operationId 운행 일정 ID
-     * @returns {Promise} API 응답
+     * @returns {Promise} Response: ApiResponse<OperationPlanDTO>
      */
     getScheduleDetail: (operationId) => {
         return apiClient.get(`/api/operation-plan/detail/${operationId}`);
