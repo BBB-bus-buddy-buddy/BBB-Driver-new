@@ -37,7 +37,7 @@ class OperationPlanService {
     try {
       if (!forceRefresh && this.isCacheValid()) {
         const today = formatDateForAPI(new Date());
-        const todaySchedules = this.cachedSchedules.filter(schedule => 
+        const todaySchedules = this.cachedSchedules.filter(schedule =>
           schedule.operationDate === today
         );
         if (todaySchedules.length > 0) {
@@ -48,20 +48,20 @@ class OperationPlanService {
 
       console.log('[OperationPlanService] API에서 오늘 운행 일정 조회');
       const response = await operationPlanAPI.getDriverTodaySchedules();
-      
+
       console.log('[OperationPlanService] API 원본 응답:', response);
-      
+
       if (response.data && response.data.data !== undefined) {
         // ApiResponse 구조: { data: [...], message: "..." }
         const schedules = response.data.data;
-        
+
         console.log('[OperationPlanService] 파싱된 일정 수:', schedules.length);
         console.log('[OperationPlanService] 첫 번째 일정:', schedules[0]);
-        
+
         // 캐시 업데이트
         this.cachedSchedules = schedules;
         this.cacheTimestamp = Date.now();
-        
+
         return schedules;
       } else {
         console.error('[OperationPlanService] 오늘 운행 일정 조회 실패:', response);
@@ -80,9 +80,9 @@ class OperationPlanService {
     try {
       const formattedDate = formatDateForAPI(date);
       console.log(`[OperationPlanService] ${formattedDate} 운행 일정 조회`);
-      
+
       const response = await operationPlanAPI.getDriverSchedulesByDate(formattedDate);
-      
+
       if (response.data) {
         const schedules = response.data.data || response.data || [];
         console.log(`[OperationPlanService] ${formattedDate} 일정:`, schedules);
@@ -103,9 +103,9 @@ class OperationPlanService {
   async getDriverMonthlySchedules(year, month) {
     try {
       console.log(`[OperationPlanService] ${year}년 ${month}월 운행 일정 조회`);
-      
+
       const response = await operationPlanAPI.getDriverMonthlySchedules(year, month);
-      
+
       if (response.data) {
         const schedules = response.data.data || response.data || [];
         console.log(`[OperationPlanService] 월간 일정 개수:`, schedules.length);
@@ -126,9 +126,9 @@ class OperationPlanService {
   async getDriverCurrentMonthSchedules() {
     try {
       console.log('[OperationPlanService] 현재 월 운행 일정 조회');
-      
+
       const response = await operationPlanAPI.getDriverCurrentMonthSchedules();
-      
+
       if (response.data) {
         const schedules = response.data.data || response.data || [];
         console.log('[OperationPlanService] 현재 월 일정 개수:', schedules.length);
@@ -149,9 +149,9 @@ class OperationPlanService {
   async getScheduleDetail(scheduleId) {
     try {
       console.log(`[OperationPlanService] 운행 일정 상세 조회 - ID: ${scheduleId}`);
-      
+
       const response = await operationPlanAPI.getScheduleDetail(scheduleId);
-      
+
       if (response.data) {
         const detail = response.data.data || response.data || null;
         console.log('[OperationPlanService] 일정 상세:', detail);
@@ -202,10 +202,10 @@ class OperationPlanService {
    */
   formatDateTime(date, time) {
     if (!date || !time) return '';
-    
+
     const [year, month, day] = date.split('-');
     const [hour, minute] = time.split(':');
-    
+
     return `${year}년 ${parseInt(month)}월 ${parseInt(day)}일 ${hour}:${minute}`;
   }
 
@@ -216,7 +216,7 @@ class OperationPlanService {
     if (!Array.isArray(schedules)) {
       return [];
     }
-    
+
     return schedules.map(schedule => this.formatScheduleData(schedule));
   }
 
@@ -226,10 +226,10 @@ class OperationPlanService {
   isToday(dateString) {
     const today = new Date();
     const [year, month, day] = dateString.split('-').map(Number);
-    
+
     return today.getFullYear() === year &&
-           today.getMonth() + 1 === month &&
-           today.getDate() === day;
+      today.getMonth() + 1 === month &&
+      today.getDate() === day;
   }
 
   /**
@@ -239,10 +239,10 @@ class OperationPlanService {
     const now = new Date();
     const [year, month, day] = operationDate.split('-').map(Number);
     const [hour, minute] = startTime.split(':').map(Number);
-    
+
     const scheduleTime = new Date(year, month - 1, day, hour, minute);
     const timeDiff = scheduleTime - now;
-    
+
     return timeDiff > 0 && timeDiff <= 60 * 60 * 1000; // 1시간 이내
   }
 
@@ -254,12 +254,12 @@ class OperationPlanService {
 
     schedules.forEach(schedule => {
       const dateStr = schedule.operationDate;
-      
+
       if (!marked[dateStr]) {
-        marked[dateStr] = { 
-          marked: true, 
+        marked[dateStr] = {
+          marked: true,
           dotColor: '#0064FF',
-          dots: [] 
+          dots: []
         };
       }
 
