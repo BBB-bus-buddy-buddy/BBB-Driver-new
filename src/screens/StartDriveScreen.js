@@ -38,7 +38,7 @@ const StartDriveScreen = ({ navigation, route }) => {
   const preConnectWebSocket = async () => {
     try {
       const userInfo = await storage.getUserInfo();
-      const organizationId = userInfo?.organizationId;
+      const organizationId = userInfo?.organizationId || drive.organizationId;
 
       if (!organizationId) {
         console.warn('[StartDriveScreen] 조직 ID를 찾을 수 없어 WebSocket 사전 연결 스킵');
@@ -47,9 +47,9 @@ const StartDriveScreen = ({ navigation, route }) => {
 
       // WebSocket 미리 연결 (운행 시작 전)
       await driverWebSocketService.connect(
-        drive.busNumber,
+        drive.busNumber || drive.busRealNumber,
         organizationId,
-        drive.id || drive.operationId
+        drive.operationId || drive.id
       );
 
       setWsPreConnected(true);
@@ -103,7 +103,7 @@ const StartDriveScreen = ({ navigation, route }) => {
       setLoading(true);
 
       const requestData = {
-        operationId: drive.id || drive.operationId,
+        operationId: drive.operationId || drive.id,
         isEarlyStart: false, // 조기 출발 여부는 시간 확인 후 결정
         currentLocation: currentLocation ? {
           latitude: currentLocation.latitude,
@@ -114,33 +114,45 @@ const StartDriveScreen = ({ navigation, route }) => {
 
       // 출발 시간 확인
       const now = new Date();
-      const scheduledStart = new Date(drive.scheduledStart);
+      let scheduledStart;
+      
+      // departureTime 또는 startTime에서 시간 추출
+      const timeStr = drive.startTime || drive.departureTime?.split(' ').pop();
+      if (timeStr && drive.operationDate) {
+        const [hours, minutes] = timeStr.split(':');
+        const [year, month, day] = drive.operationDate.split('-');
+        scheduledStart = new Date(year, month - 1, day, parseInt(hours), parseInt(minutes));
+      } else if (drive.scheduledStart) {
+        scheduledStart = new Date(drive.scheduledStart);
+      } else {
+        // 시간 정보가 없으면 현재 시간 사용
+        scheduledStart = now;
+      }
+
       const timeDiff = (scheduledStart - now) / (1000 * 60); // 분 단위
 
-      if (timeDiff > 0) {
-        // 아직 출발 시간이 안됨
-        if (timeDiff <= 10) {
-          // 10분 이내면 조기 출발 가능
-          Alert.alert(
-            '조기 출발',
-            `예정 출발 시간까지 ${Math.ceil(timeDiff)}분 남았습니다. 조기 출발하시겠습니까?`,
-            [
-              { text: '취소', style: 'cancel', onPress: () => setLoading(false) },
-              { 
-                text: '조기 출발', 
-                onPress: async () => {
-                  requestData.isEarlyStart = true;
-                  await startDriveRequest(requestData);
-                }
+      if (timeDiff > 60) {
+        // 1시간 이상 남음
+        Alert.alert('알림', `출발 시간까지 ${Math.ceil(timeDiff / 60)}시간 ${Math.ceil(timeDiff % 60)}분 남았습니다.`);
+        setLoading(false);
+        return;
+      } else if (timeDiff > 0) {
+        // 1시간 이내면 조기 출발 확인
+        Alert.alert(
+          '조기 출발',
+          `예정 출발 시간까지 ${Math.ceil(timeDiff)}분 남았습니다. 조기 출발하시겠습니까?`,
+          [
+            { text: '취소', style: 'cancel', onPress: () => setLoading(false) },
+            { 
+              text: '조기 출발', 
+              onPress: async () => {
+                requestData.isEarlyStart = true;
+                await startDriveRequest(requestData);
               }
-            ]
-          );
-          return;
-        } else {
-          Alert.alert('알림', `출발 시간까지 ${Math.ceil(timeDiff)}분 남았습니다.`);
-          setLoading(false);
-          return;
-        }
+            }
+          ]
+        );
+        return;
       }
 
       // 정상 출발
@@ -157,15 +169,22 @@ const StartDriveScreen = ({ navigation, route }) => {
       const response = await driveAPI.startDrive(requestData);
 
       if (response.data.success) {
-        const driveStatus = response.data.data;
+        const driveData = response.data.data;
+        
+        // 현재 운행 정보 저장
+        const currentDriveInfo = {
+          ...drive,
+          ...driveData,
+          actualStart: driveData.actualStart || new Date().toISOString(),
+          status: 'IN_PROGRESS',
+          organizationId: drive.organizationId || (await storage.getUserInfo())?.organizationId
+        };
+        
+        await storage.setCurrentDrive(currentDriveInfo);
         
         // 운행 중 화면으로 이동
         navigation.replace('Driving', { 
-          drive: {
-            ...drive,
-            ...driveStatus,
-            status: 'IN_PROGRESS'
-          } 
+          drive: currentDriveInfo
         });
       } else {
         throw new Error(response.data.message || '운행 시작에 실패했습니다.');
@@ -196,6 +215,21 @@ const StartDriveScreen = ({ navigation, route }) => {
   // 운행 시작 버튼 활성화 조건
   const canStart = locationConfirmed && !checkingLocation && !loading;
 
+  // 출발 시간 표시 포맷
+  const formatDepartureTime = () => {
+    if (drive.startTime && drive.operationDate) {
+      return `${drive.operationDate} ${drive.startTime}`;
+    }
+    return drive.departureTime || '시간 정보 없음';
+  };
+
+  const formatArrivalTime = () => {
+    if (drive.endTime && drive.operationDate) {
+      return drive.endTime;
+    }
+    return drive.arrivalTime?.split(' ').pop() || '시간 정보 없음';
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
@@ -204,36 +238,36 @@ const StartDriveScreen = ({ navigation, route }) => {
             <Text style={styles.backButtonText}>← 뒤로</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>운행 준비</Text>
-          <WebSocketStatus />
+          {wsPreConnected && <WebSocketStatus />}
         </View>
 
         <View style={styles.content}>
           <View style={styles.driveInfoCard}>
-            <Text style={styles.busNumber}>{drive.busNumber}</Text>
+            <Text style={styles.busNumber}>{drive.busNumber || drive.busRealNumber}</Text>
             <View style={styles.routeInfo}>
-              <Text style={styles.routeText}>{drive.routeName || '노선 정보 없음'}</Text>
+              <Text style={styles.routeText}>{drive.route || drive.routeName || '노선 정보 없음'}</Text>
             </View>
             <View style={styles.timeInfo}>
               <View style={styles.timeItem}>
                 <Text style={styles.timeLabel}>출발 시간</Text>
                 <Text style={styles.timeValue}>
-                  {new Date(drive.scheduledStart).toLocaleTimeString('ko-KR', {
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
+                  {drive.startTime || '시간 정보 없음'}
                 </Text>
               </View>
               <View style={styles.timeDivider} />
               <View style={styles.timeItem}>
                 <Text style={styles.timeLabel}>도착 예정</Text>
                 <Text style={styles.timeValue}>
-                  {new Date(drive.scheduledEnd).toLocaleTimeString('ko-KR', {
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
+                  {drive.endTime || '시간 정보 없음'}
                 </Text>
               </View>
             </View>
+            {drive.driverName && (
+              <View style={styles.driverInfo}>
+                <Text style={styles.driverLabel}>운전자</Text>
+                <Text style={styles.driverName}>{drive.driverName}</Text>
+              </View>
+            )}
           </View>
 
           <View style={styles.locationCheckCard}>
@@ -273,7 +307,7 @@ const StartDriveScreen = ({ navigation, route }) => {
           {drive.startLocation && (
             <View style={styles.locationInfoCard}>
               <Text style={styles.locationInfoTitle}>출발지 정보</Text>
-              <Text style={styles.locationInfoText}>{drive.startLocation.name}</Text>
+              <Text style={styles.locationInfoText}>{drive.startLocation.name || drive.startLocation}</Text>
             </View>
           )}
 
@@ -294,9 +328,11 @@ const StartDriveScreen = ({ navigation, route }) => {
             onPress={handleStartDrive}
             disabled={!canStart}
           >
-            <Text style={styles.startButtonText}>
-              {loading ? '운행 시작 중...' : '운행 시작'}
-            </Text>
+            {loading ? (
+              <ActivityIndicator color={COLORS.white} />
+            ) : (
+              <Text style={styles.startButtonText}>운행 시작</Text>
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -330,6 +366,11 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.lg,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.black,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    textAlign: 'center',
+    zIndex: -1,
   },
   content: {
     flex: 1,
@@ -384,6 +425,22 @@ const styles = StyleSheet.create({
     color: COLORS.black,
     fontWeight: FONT_WEIGHT.medium,
   },
+  driverInfo: {
+    marginTop: SPACING.md,
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  driverLabel: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.grey,
+    marginBottom: SPACING.xs,
+  },
+  driverName: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.black,
+    fontWeight: FONT_WEIGHT.medium,
+  },
   locationCheckCard: {
     backgroundColor: COLORS.white,
     borderRadius: BORDER_RADIUS.md,
@@ -418,7 +475,7 @@ const styles = StyleSheet.create({
   },
   confirmedText: {
     fontSize: FONT_SIZE.md,
-    color: COLORS.primary,
+    color: COLORS.success,
     textAlign: 'center',
     lineHeight: 22,
     fontWeight: FONT_WEIGHT.semiBold,
@@ -492,6 +549,7 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.sm,
     paddingVertical: SPACING.md,
     alignItems: 'center',
+    minHeight: 50,
   },
   disabledButton: {
     backgroundColor: COLORS.extraLightGrey,

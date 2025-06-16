@@ -1,8 +1,8 @@
-// src/screens/AdditionalInfoBeta/AdditionalInfoBeta.js 
-import React, { useState } from 'react';
-import { View, Text, ScrollView, Alert } from 'react-native';
+// src/screens/AdditionalInfoBeta/AdditioncalInfoBeta.js 
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { ValidationService } from '../../services';
+import { ValidationService, AuthService } from '../../services';
 import { storage } from '../../utils/storage';
 
 import PersonalInfoStep from './step/PersonalInfoStep';
@@ -21,6 +21,8 @@ const AdditionalInfoBeta = () => {
     const navigation = useNavigation();
     const [currentStep, setCurrentStep] = useState(1);
     const [loading, setLoading] = useState(false);
+    const [userInfo, setUserInfo] = useState(null);
+    const [initialLoading, setInitialLoading] = useState(true);
 
     const [driverInfo, setDriverInfo] = useState({
         identity: '',
@@ -47,6 +49,34 @@ const AdditionalInfoBeta = () => {
     });
 
     const [validationErrors, setValidationErrors] = useState({});
+
+    // 사용자 정보 로드
+    useEffect(() => {
+        const loadUserInfo = async () => {
+            try {
+                setInitialLoading(true);
+                
+                // AuthService를 통해 현재 사용자 정보 가져오기
+                const currentUser = await AuthService.getCurrentUser();
+                
+                if (currentUser) {
+                    setUserInfo(currentUser);
+                    console.log('[AdditionalInfoBeta] 사용자 정보 로드:', currentUser.email);
+                } else {
+                    Alert.alert('오류', '사용자 정보를 찾을 수 없습니다. 다시 로그인해주세요.');
+                    navigation.navigate('Login');
+                }
+            } catch (error) {
+                console.error('[AdditionalInfoBeta] 사용자 정보 로드 오류:', error);
+                Alert.alert('오류', '사용자 정보를 불러올 수 없습니다.');
+                navigation.navigate('Login');
+            } finally {
+                setInitialLoading(false);
+            }
+        };
+
+        loadUserInfo();
+    }, [navigation]);
 
     // 입력 포맷팅 함수들
     const formatters = {
@@ -242,11 +272,19 @@ const AdditionalInfoBeta = () => {
 
         setLoading(true);
         try {
+            // ValidationService.upgradeToDriver 사용
             const response = await ValidationService.upgradeToDriver(driverInfo);
 
             if (response.success) {
-                await storage.setUserInfo(response.data);
+                // 성공 시 storage에 사용자 정보 저장
+                if (response.data) {
+                    await storage.setUserInfo(response.data);
+                    await storage.setHasAdditionalInfo(true);
+                }
 
+                // 사용자 정보 동기화
+                const syncResult = await AuthService.syncUserInfo();
+                
                 Alert.alert(
                     '등록 완료',
                     '드라이버 등록이 성공적으로 완료되었습니다.',
@@ -320,6 +358,16 @@ const AdditionalInfoBeta = () => {
                 return '';
         }
     };
+
+    // 초기 로딩 중
+    if (initialLoading) {
+        return (
+            <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+                <ActivityIndicator size="large" color="#007AFF" />
+                <Text style={{ marginTop: 10, color: '#666' }}>로딩 중...</Text>
+            </View>
+        );
+    }
 
     return (
         <ScrollView style={styles.container}>

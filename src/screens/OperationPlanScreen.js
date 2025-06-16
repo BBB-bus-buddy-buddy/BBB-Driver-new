@@ -202,28 +202,35 @@ const OperationPlanScreen = ({ navigation }) => {
                 <View style={styles.detailSection}>
                   <Text style={styles.detailLabel}>노선</Text>
                   <Text style={styles.detailValue}>
-                    {selectedScheduleDetail.routeName || '노선 정보 없음'}
+                    {selectedScheduleDetail.route || '노선 정보 없음'}
                   </Text>
                 </View>
 
                 <View style={styles.detailSection}>
                   <Text style={styles.detailLabel}>운전자</Text>
                   <Text style={styles.detailValue}>
-                    {selectedScheduleDetail.driverName}
+                    {selectedScheduleDetail.driverName || '-'}
+                  </Text>
+                </View>
+
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailLabel}>운행 날짜</Text>
+                  <Text style={styles.detailValue}>
+                    {selectedScheduleDetail.operationDate}
                   </Text>
                 </View>
 
                 <View style={styles.detailSection}>
                   <Text style={styles.detailLabel}>출발 시간</Text>
                   <Text style={styles.detailValue}>
-                    {new Date(selectedScheduleDetail.scheduledStart).toLocaleString('ko-KR')}
+                    {selectedScheduleDetail.startTime}
                   </Text>
                 </View>
 
                 <View style={styles.detailSection}>
                   <Text style={styles.detailLabel}>도착 시간</Text>
                   <Text style={styles.detailValue}>
-                    {new Date(selectedScheduleDetail.scheduledEnd).toLocaleString('ko-KR')}
+                    {selectedScheduleDetail.endTime}
                   </Text>
                 </View>
 
@@ -244,12 +251,48 @@ const OperationPlanScreen = ({ navigation }) => {
                     </Text>
                   </View>
                 )}
+
+                <View style={styles.modalFooter}>
+                  <TouchableOpacity
+                    style={styles.modalActionButton}
+                    onPress={() => {
+                      setModalVisible(false);
+                      setSelectedScheduleDetail(null);
+                    }}>
+                    <Text style={styles.modalActionButtonText}>닫기</Text>
+                  </TouchableOpacity>
+                </View>
               </ScrollView>
             ) : null}
           </View>
         </View>
       </Modal>
     );
+  };
+
+  const getScheduleStatus = (schedule) => {
+    if (schedule.status === 'COMPLETED') return '완료';
+    if (schedule.status === 'IN_PROGRESS') return '진행 중';
+    if (schedule.status === 'CANCELLED') return '취소';
+    
+    // SCHEDULED 상태일 때 시간 체크
+    if (OperationPlanService.isToday(schedule.operationDate)) {
+      if (OperationPlanService.isUpcoming(schedule.operationDate, schedule.startTime)) {
+        return '곧 시작';
+      }
+    }
+    
+    return '예정';
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case '완료': return COLORS.grey;
+      case '진행 중': return COLORS.success;
+      case '취소': return COLORS.error;
+      case '곧 시작': return COLORS.warning;
+      default: return COLORS.primary;
+    }
   };
 
   return (
@@ -308,47 +351,54 @@ const OperationPlanScreen = ({ navigation }) => {
                 <Text style={styles.loadingText}>일정을 불러오는 중...</Text>
               </View>
             ) : schedules.length > 0 ? (
-              schedules.map((schedule, index) => (
-                <TouchableOpacity
-                  key={schedule.id || index}
-                  style={styles.scheduleCard}
-                  onPress={() => handleSchedulePress(schedule)}
-                  activeOpacity={0.7}>
-                  <View style={styles.scheduleHeader}>
-                    <Text style={styles.busNumber}>{schedule.busNumber}</Text>
-                    <View style={styles.routeBadge}>
-                      <Text style={styles.routeBadgeText}>운행 {index + 1}</Text>
+              schedules.map((schedule, index) => {
+                const status = getScheduleStatus(schedule);
+                const statusColor = getStatusColor(status);
+                
+                return (
+                  <TouchableOpacity
+                    key={schedule.id || index}
+                    style={styles.scheduleCard}
+                    onPress={() => handleSchedulePress(schedule)}
+                    activeOpacity={0.7}>
+                    <View style={styles.scheduleHeader}>
+                      <Text style={styles.busNumber}>{schedule.busNumber}</Text>
+                      <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
+                        <Text style={styles.statusBadgeText}>{status}</Text>
+                      </View>
                     </View>
-                  </View>
 
-                  <View style={styles.scheduleInfo}>
-                    <View style={styles.infoRow}>
-                      <Text style={styles.infoLabel}>노선:</Text>
-                      <Text style={styles.infoValue}>{schedule.routeName || '노선 정보 없음'}</Text>
+                    <View style={styles.scheduleInfo}>
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>노선:</Text>
+                        <Text style={styles.infoValue}>{schedule.route || '노선 정보 없음'}</Text>
+                      </View>
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>출발:</Text>
+                        <Text style={styles.infoValue}>{schedule.startTime}</Text>
+                      </View>
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>도착:</Text>
+                        <Text style={styles.infoValue}>{schedule.endTime}</Text>
+                      </View>
+                      {schedule.driverName && (
+                        <View style={styles.infoRow}>
+                          <Text style={styles.infoLabel}>운전자:</Text>
+                          <Text style={styles.infoValue}>{schedule.driverName}</Text>
+                        </View>
+                      )}
                     </View>
-                    <View style={styles.infoRow}>
-                      <Text style={styles.infoLabel}>출발:</Text>
-                      <Text style={styles.infoValue}>
-                        {new Date(schedule.scheduledStart).toLocaleTimeString('ko-KR', {
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </Text>
-                    </View>
-                    <View style={styles.infoRow}>
-                      <Text style={styles.infoLabel}>도착:</Text>
-                      <Text style={styles.infoValue}>
-                        {new Date(schedule.scheduledEnd).toLocaleTimeString('ko-KR', {
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </Text>
-                    </View>
-                  </View>
 
-                  <Text style={styles.tapHint}>자세히 보려면 탭하세요 →</Text>
-                </TouchableOpacity>
-              ))
+                    {schedule.isRecurring && (
+                      <View style={styles.recurringBadge}>
+                        <Text style={styles.recurringBadgeText}>반복 일정</Text>
+                      </View>
+                    )}
+
+                    <Text style={styles.tapHint}>자세히 보려면 탭하세요 →</Text>
+                  </TouchableOpacity>
+                );
+              })
             ) : (
               <View style={styles.noScheduleContainer}>
                 <Text style={styles.noScheduleText}>예정된 일정이 없습니다.</Text>
@@ -443,15 +493,14 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.black,
   },
-  routeBadge: {
-    backgroundColor: COLORS.secondary,
+  statusBadge: {
     paddingVertical: SPACING.xs,
     paddingHorizontal: SPACING.sm,
-    borderRadius: BORDER_RADIUS.md,
+    borderRadius: BORDER_RADIUS.sm,
   },
-  routeBadgeText: {
+  statusBadgeText: {
     fontSize: FONT_SIZE.xs,
-    color: COLORS.primary,
+    color: COLORS.white,
     fontWeight: FONT_WEIGHT.medium,
   },
   scheduleInfo: {
@@ -462,7 +511,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xs,
   },
   infoLabel: {
-    width: 50,
+    width: 60,
     fontSize: FONT_SIZE.sm,
     color: COLORS.grey,
   },
@@ -471,6 +520,19 @@ const styles = StyleSheet.create({
     color: COLORS.black,
     fontWeight: FONT_WEIGHT.medium,
     flex: 1,
+  },
+  recurringBadge: {
+    backgroundColor: COLORS.secondary,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: BORDER_RADIUS.sm,
+    alignSelf: 'flex-start',
+    marginTop: SPACING.xs,
+  },
+  recurringBadgeText: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.primary,
+    fontWeight: FONT_WEIGHT.medium,
   },
   tapHint: {
     fontSize: FONT_SIZE.xs,
@@ -554,6 +616,20 @@ const styles = StyleSheet.create({
   },
   statusText: {
     color: COLORS.primary,
+  },
+  modalFooter: {
+    marginTop: SPACING.xl,
+  },
+  modalActionButton: {
+    backgroundColor: COLORS.primary,
+    borderRadius: BORDER_RADIUS.sm,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+  },
+  modalActionButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.semiBold,
   },
 });
 

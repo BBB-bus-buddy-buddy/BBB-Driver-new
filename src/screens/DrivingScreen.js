@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, SHADOWS, SPACING } from '../constants/theme';
 import { driveAPI } from '../api/drive';
-import { startLocationTracking, stopLocationTracking } from '../services/locationService';
+import { startLocationTracking, stopLocationTracking, getCurrentLocation } from '../services/locationService';
 import driverWebSocketService from '../services/webSocketService';
 import { storage } from '../utils/storage';
 
@@ -25,13 +25,16 @@ const DrivingScreen = ({ navigation, route }) => {
   const [locationTrackingId, setLocationTrackingId] = useState(null);
   const [occupiedSeats, setOccupiedSeats] = useState(0);
   const [wsConnected, setWsConnected] = useState(false);
+  const [totalPassengers, setTotalPassengers] = useState(0);
+  const [boardedCount, setBoardedCount] = useState(0);
+  const [alightedCount, setAlightedCount] = useState(0);
   
   const appState = useRef(AppState.currentState);
   const locationUpdateInterval = useRef(null);
 
   // 운행 시간 카운터
   useEffect(() => {
-    const startTime = new Date(drive.actualStart || drive.scheduledStart);
+    const startTime = new Date(drive.actualStart || drive.scheduledStart || new Date());
 
     const timer = setInterval(() => {
       const now = new Date();
@@ -54,26 +57,37 @@ const DrivingScreen = ({ navigation, route }) => {
 
     const initializeWebSocket = async () => {
       try {
-        const userInfo = await storage.getUserInfo();
-        const organizationId = userInfo?.organizationId;
+        // WebSocket이 이미 연결되어 있는지 확인
+        if (driverWebSocketService.checkConnection()) {
+          setWsConnected(true);
+          console.log('[DrivingScreen] WebSocket 이미 연결됨');
+        } else {
+          // 새로 연결 필요
+          const userInfo = await storage.getUserInfo();
+          const organizationId = drive.organizationId || userInfo?.organizationId;
 
-        if (!organizationId) {
-          console.error('[DrivingScreen] 조직 ID를 찾을 수 없습니다');
-          return;
+          if (!organizationId) {
+            console.error('[DrivingScreen] 조직 ID를 찾을 수 없습니다');
+            return;
+          }
+
+          // WebSocket 연결
+          await driverWebSocketService.connect(
+            drive.busNumber || drive.busRealNumber,
+            organizationId,
+            drive.operationId || drive.id
+          );
+
+          setWsConnected(true);
         }
-
-        // WebSocket 연결
-        await driverWebSocketService.connect(
-          drive.busNumber,
-          organizationId,
-          drive.operationId || drive.id
-        );
-
-        setWsConnected(true);
 
         // WebSocket 메시지 핸들러 등록
         driverWebSocketService.on('busUpdate', handleBusUpdate);
         driverWebSocketService.on('passengerBoarding', handlePassengerBoarding);
+        driverWebSocketService.on('boarding', handlePassengerBoarding);
+
+        // 운행 시작 상태 전송
+        driverWebSocketService.sendBusStatusUpdate('IN_OPERATION');
 
       } catch (error) {
         console.error('[DrivingScreen] WebSocket 연결 실패:', error);
@@ -89,6 +103,17 @@ const DrivingScreen = ({ navigation, route }) => {
       if (driverWebSocketService.checkConnection()) {
         driverWebSocketService.updateCurrentLocation(location);
         driverWebSocketService.sendLocationUpdate(location, occupiedSeats);
+      }
+
+      // 목적지 근접 여부 확인 (예: 500m 이내)
+      if (drive.endLocation?.latitude && drive.endLocation?.longitude) {
+        const distance = calculateDistance(
+          location.latitude,
+          location.longitude,
+          drive.endLocation.latitude,
+          drive.endLocation.longitude
+        );
+        setIsNearDestination(distance < 0.5); // 0.5km = 500m
       }
     });
 
@@ -111,8 +136,8 @@ const DrivingScreen = ({ navigation, route }) => {
       // WebSocket 연결 해제
       driverWebSocketService.off('busUpdate');
       driverWebSocketService.off('passengerBoarding');
-      driverWebSocketService.disconnect();
-
+      driverWebSocketService.off('boarding');
+      
       // 위치 추적 중지
       if (locationTrackingId) {
         stopLocationTracking(locationTrackingId);
@@ -127,19 +152,36 @@ const DrivingScreen = ({ navigation, route }) => {
   // WebSocket 메시지 핸들러들
   const handleBusUpdate = (message) => {
     console.log('[DrivingScreen] 버스 상태 업데이트:', message);
-    // 필요시 UI 업데이트
+    
+    if (message.data) {
+      // 다음 정류장 정보 업데이트
+      if (message.data.nextStop) {
+        setNextStopInfo(message.data.nextStop);
+      }
+      
+      // 승객 수 업데이트
+      if (message.data.occupiedSeats !== undefined) {
+        setOccupiedSeats(message.data.occupiedSeats);
+      }
+    }
   };
 
   const handlePassengerBoarding = (message) => {
     console.log('[DrivingScreen] 승객 탑승/하차:', message);
     
-    const { action, userId } = message.data;
-    if (action === 'BOARD') {
+    const { action, userId, passengerInfo } = message.data || message;
+    
+    if (action === 'BOARD' || action === 'board') {
       setOccupiedSeats(prev => prev + 1);
+      setBoardedCount(prev => prev + 1);
+      setTotalPassengers(prev => prev + 1);
+      
       // 알림 표시 (선택)
       // Alert.alert('승객 탑승', `승객이 탑승했습니다`);
-    } else if (action === 'ALIGHT') {
+    } else if (action === 'ALIGHT' || action === 'alight') {
       setOccupiedSeats(prev => Math.max(0, prev - 1));
+      setAlightedCount(prev => prev + 1);
+      
       // Alert.alert('승객 하차', `승객이 하차했습니다`);
     }
   };
@@ -151,11 +193,22 @@ const DrivingScreen = ({ navigation, route }) => {
       
       // WebSocket 재연결 확인
       if (!driverWebSocketService.checkConnection()) {
-        driverWebSocketService.connect(
-          drive.busNumber,
-          drive.organizationId,
-          drive.operationId || drive.id
-        );
+        const reconnect = async () => {
+          try {
+            const userInfo = await storage.getUserInfo();
+            const organizationId = drive.organizationId || userInfo?.organizationId;
+            
+            await driverWebSocketService.connect(
+              drive.busNumber || drive.busRealNumber,
+              organizationId,
+              drive.operationId || drive.id
+            );
+            setWsConnected(true);
+          } catch (error) {
+            console.error('[DrivingScreen] WebSocket 재연결 실패:', error);
+          }
+        };
+        reconnect();
       }
     }
     appState.current = nextAppState;
@@ -166,7 +219,7 @@ const DrivingScreen = ({ navigation, route }) => {
     try {
       const requestData = {
         operationId: drive.operationId || drive.id,
-        busNumber: drive.busNumber,
+        busNumber: drive.busNumber || drive.busRealNumber,
         location: {
           latitude: location.latitude,
           longitude: location.longitude,
@@ -196,6 +249,21 @@ const DrivingScreen = ({ navigation, route }) => {
       console.error('[DrivingScreen] 위치 업데이트 전송 실패:', error);
     }
   };
+
+  // 거리 계산 함수 (km)
+  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371; // 지구 반경 (km)
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
+
+  const toRad = (deg) => deg * (Math.PI/180);
 
   // 뒤로가기 버튼 방지
   useEffect(() => {
@@ -239,6 +307,9 @@ const DrivingScreen = ({ navigation, route }) => {
 
   const completeEndDrive = async (endReason) => {
     try {
+      // 운행 종료 상태 전송
+      driverWebSocketService.sendBusStatusUpdate('COMPLETED');
+      
       // WebSocket 연결 해제
       driverWebSocketService.disconnect();
       
@@ -252,21 +323,47 @@ const DrivingScreen = ({ navigation, route }) => {
         clearInterval(locationUpdateInterval.current);
       }
 
+      // 현재 위치 가져오기 (선택적)
+      let endLocation = null;
+      try {
+        const location = await getCurrentLocation();
+        endLocation = {
+          latitude: location.latitude,
+          longitude: location.longitude,
+          timestamp: Date.now()
+        };
+      } catch (locError) {
+        console.log('[DrivingScreen] 종료 위치 조회 실패:', locError);
+      }
+
       // 운행 종료 API 호출
       const response = await driveAPI.endDrive({
         operationId: drive.operationId || drive.id,
+        currentLocation: endLocation,
         endReason: endReason
       });
 
       if (response.data.success) {
         const completedDrive = response.data.data;
         
+        // 운행 정보에 추가 데이터 포함
+        const enrichedCompletedDrive = {
+          ...drive,
+          ...completedDrive,
+          actualEnd: completedDrive.actualEnd || new Date().toISOString(),
+          totalPassengers,
+          boardedCount,
+          alightedCount,
+          finalOccupiedSeats: occupiedSeats
+        };
+        
+        // 운행 정보 저장
+        await storage.setCompletedDrive(enrichedCompletedDrive);
+        await storage.removeCurrentDrive();
+        
         // 운행 종료 화면으로 이동
         navigation.replace('EndDrive', { 
-          drive: {
-            ...drive,
-            ...completedDrive
-          } 
+          drive: enrichedCompletedDrive
         });
       } else {
         throw new Error(response.data.message || '운행 종료에 실패했습니다.');
@@ -298,15 +395,27 @@ const DrivingScreen = ({ navigation, route }) => {
             </View>
 
             <View style={styles.busInfoContainer}>
-              <Text style={styles.busNumber}>{drive.busNumber}</Text>
+              <Text style={styles.busNumber}>{drive.busNumber || drive.busRealNumber}</Text>
               <View style={styles.routeBadge}>
-                <Text style={styles.routeBadgeText}>{drive.routeName || '노선 정보 없음'}</Text>
+                <Text style={styles.routeBadgeText}>{drive.routeName || drive.route || '노선 정보 없음'}</Text>
               </View>
             </View>
 
-            <View style={styles.seatInfoContainer}>
-              <Text style={styles.seatInfoLabel}>탑승 승객</Text>
-              <Text style={styles.seatInfoValue}>{occupiedSeats}명</Text>
+            <View style={styles.passengerInfoContainer}>
+              <View style={styles.passengerItem}>
+                <Text style={styles.passengerLabel}>탑승 승객</Text>
+                <Text style={styles.passengerValue}>{occupiedSeats}명</Text>
+              </View>
+              <View style={styles.passengerDivider} />
+              <View style={styles.passengerItem}>
+                <Text style={styles.passengerLabel}>총 탑승</Text>
+                <Text style={styles.passengerValue}>{boardedCount}명</Text>
+              </View>
+              <View style={styles.passengerDivider} />
+              <View style={styles.passengerItem}>
+                <Text style={styles.passengerLabel}>총 하차</Text>
+                <Text style={styles.passengerValue}>{alightedCount}명</Text>
+              </View>
             </View>
 
             <View style={styles.timeInfoContainer}>
@@ -348,7 +457,7 @@ const DrivingScreen = ({ navigation, route }) => {
                   </Text>
                 </View>
               )}
-              {nextStopInfo.sequence && (
+              {nextStopInfo.sequence !== undefined && nextStopInfo.totalStops && (
                 <Text style={styles.stopSequence}>
                   {nextStopInfo.sequence} / {nextStopInfo.totalStops} 정거장
                 </Text>
@@ -466,24 +575,34 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontWeight: FONT_WEIGHT.medium,
   },
-  seatInfoContainer: {
+  passengerInfoContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: SPACING.md,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
-    backgroundColor: COLORS.lightGrey,
+    backgroundColor: COLORS.background,
     borderRadius: BORDER_RADIUS.sm,
   },
-  seatInfoLabel: {
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.grey,
+  passengerItem: {
+    flex: 1,
+    alignItems: 'center',
   },
-  seatInfoValue: {
+  passengerLabel: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.grey,
+    marginBottom: SPACING.xs,
+  },
+  passengerValue: {
     fontSize: FONT_SIZE.md,
     color: COLORS.black,
     fontWeight: FONT_WEIGHT.semiBold,
+  },
+  passengerDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: COLORS.border,
   },
   timeInfoContainer: {
     flexDirection: 'row',
@@ -522,10 +641,10 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xs,
   },
   nextStopName: {
-    fontSize: FONT_SIZE.xxl,
+    fontSize: FONT_SIZE.xl,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.black,
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.sm,
   },
   timeRemainingContainer: {
     flexDirection: 'row',

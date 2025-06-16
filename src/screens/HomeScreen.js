@@ -72,10 +72,14 @@ const HomeScreen = ({ navigation }) => {
       if (Array.isArray(schedules)) {
         // 시간순으로 정렬
         const sortedSchedules = schedules.sort((a, b) => {
-          return a.startTime.localeCompare(b.startTime);
+          const timeA = a.startTime || a.departureTime;
+          const timeB = b.startTime || b.departureTime;
+          return timeA.localeCompare(timeB);
         });
         
-        setDriveSchedules(sortedSchedules);
+        // 포맷된 일정으로 변환
+        const formattedSchedules = OperationPlanService.formatScheduleList(sortedSchedules);
+        setDriveSchedules(formattedSchedules);
       } else {
         setDriveSchedules([]);
       }
@@ -107,8 +111,28 @@ const HomeScreen = ({ navigation }) => {
       return;
     }
 
+    // schedule 객체를 drive 형식으로 변환하여 전달
+    const driveData = {
+      id: schedule.id,
+      operationId: schedule.operationId || schedule.id,
+      busNumber: schedule.busNumber,
+      busRealNumber: schedule.busRealNumber,
+      routeName: schedule.route || schedule.routeName,
+      routeId: schedule.routeId,
+      scheduledStart: schedule.departureTime,
+      scheduledEnd: schedule.arrivalTime,
+      startTime: schedule.startTime,
+      endTime: schedule.endTime,
+      operationDate: schedule.operationDate,
+      status: schedule.status,
+      driverId: schedule.driverId,
+      driverName: schedule.driverName,
+      organizationId: schedule.organizationId || userInfo?.organizationId,
+      ...schedule
+    };
+
     // 운행 시작 화면으로 이동
-    navigation.navigate('StartDrive', { schedule });
+    navigation.navigate('StartDrive', { drive: driveData });
   };
 
   const handleBottomTabPress = (tabId) => {
@@ -132,12 +156,21 @@ const HomeScreen = ({ navigation }) => {
         return { text: '운행 중', color: COLORS.success };
       case 'SCHEDULED':
         const now = new Date();
-        const [hours, minutes] = schedule.startTime.split(':');
-        const startTime = new Date();
-        startTime.setHours(parseInt(hours), parseInt(minutes), 0);
+        const startTimeStr = schedule.startTime || schedule.departureTime?.split(' ').pop();
         
-        if (now >= startTime) {
-          return { text: '운행 대기', color: COLORS.warning };
+        if (startTimeStr) {
+          const [hours, minutes] = startTimeStr.split(':');
+          const startTime = new Date();
+          startTime.setHours(parseInt(hours), parseInt(minutes), 0);
+          
+          // 출발 1시간 전부터 운행 대기 상태
+          const oneHourBefore = new Date(startTime.getTime() - 60 * 60 * 1000);
+          
+          if (now >= oneHourBefore && now < startTime) {
+            return { text: '운행 대기', color: COLORS.warning };
+          } else if (now >= startTime) {
+            return { text: '출발 시간', color: COLORS.error };
+          }
         }
         return { text: '운행 예정', color: COLORS.primary };
       default:
@@ -185,6 +218,7 @@ const HomeScreen = ({ navigation }) => {
               <View style={styles.scheduleList}>
                 {driveSchedules.map((schedule) => {
                   const status = getScheduleStatus(schedule);
+                  const isActive = status.text === '운행 대기' || status.text === '출발 시간';
                   
                   return (
                     <TouchableOpacity
@@ -197,7 +231,7 @@ const HomeScreen = ({ navigation }) => {
                       disabled={schedule.status === 'COMPLETED'}
                     >
                       <View style={styles.scheduleHeader}>
-                        <Text style={styles.busNumber}>버스 {schedule.busNumber}</Text>
+                        <Text style={styles.busNumber}>{schedule.busNumber}</Text>
                         <View style={[styles.statusBadge, { backgroundColor: status.color }]}>
                           <Text style={styles.statusText}>{status.text}</Text>
                         </View>
@@ -207,10 +241,18 @@ const HomeScreen = ({ navigation }) => {
                         <Text style={styles.timeText}>
                           {schedule.startTime} - {schedule.endTime}
                         </Text>
-                        {schedule.routeName && (
-                          <Text style={styles.routeText}>{schedule.routeName}</Text>
+                        {schedule.route && (
+                          <Text style={styles.routeText}>{schedule.route}</Text>
                         )}
                       </View>
+
+                      {isActive && (
+                        <View style={styles.activeIndicator}>
+                          <Text style={styles.activeIndicatorText}>
+                            운행 시작 가능
+                          </Text>
+                        </View>
+                      )}
                     </TouchableOpacity>
                   );
                 })}
@@ -294,6 +336,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     borderRadius: BORDER_RADIUS.md,
     padding: SPACING.lg,
+    marginBottom: SPACING.sm,
     ...SHADOWS.small,
   },
   completedCard: {
@@ -331,6 +374,17 @@ const styles = StyleSheet.create({
   routeText: {
     fontSize: FONT_SIZE.sm,
     color: COLORS.grey,
+  },
+  activeIndicator: {
+    marginTop: SPACING.sm,
+    paddingTop: SPACING.sm,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  activeIndicatorText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.primary,
+    fontWeight: FONT_WEIGHT.medium,
   },
   bottomPadding: {
     height: 80,
