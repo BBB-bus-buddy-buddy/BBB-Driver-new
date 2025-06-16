@@ -1,6 +1,6 @@
 // src/hooks/useDriverWebSocket.js
 import { useEffect, useState, useCallback, useRef } from 'react';
-import driverWebSocketService from '../services/webSocketService';
+import driverWebSocketService from '../services/driverWebSocketService';
 
 /**
  * 운전자 WebSocket 연결을 관리하는 커스텀 훅

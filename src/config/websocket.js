@@ -14,7 +14,6 @@ export const getWebSocketUrl = (isDevelopment = __DEV__) => {
   
   return {
     driver: `${wsUrl}/ws/driver`,
-    passenger: `${wsUrl}/ws/passenger` // 향후 승객 기능 추가시 사용
   };
 };
 
