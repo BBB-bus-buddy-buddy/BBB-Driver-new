@@ -216,3 +216,18 @@ todo.md
 build-device.sh
 setup-env.sh
 setup-permissions.sh
+
+
+# Android
+android/build/
+android/.gradle/
+android/app/build/
+android/app/.cxx/
+android/.idea/
+android/local.properties
+android/**/*.iml
+android/captures/
+android/.externalNativeBuild/
+android/app/release/
+android/app/debug/
+*.hprof
