@@ -5,11 +5,17 @@ import { API_URL_PROD, API_URL_LOCAL, API_TIMEOUT } from '@env';
 
 // 환경에 따른 API URL 자동 선택
 const getApiUrl = () => {
-  // __DEV__는 개발 모드에서 true, 프로덕션 빌드에서 false
-  const apiUrl = __DEV__ ? API_URL_LOCAL : API_URL_PROD;
+  // 릴리즈 모드에서도 제대로 작동하도록 수정
+  const isDev = __DEV__;
 
-  console.log('[API Client] 환경:', __DEV__ ? '개발' : '프로덕션');
-  console.log('[API Client] API URL:', apiUrl);
+  console.log('[API Client] 환경:', isDev ? '개발' : '프로덕션');
+  console.log('[API Client] API_URL_PROD:', API_URL_PROD);
+  console.log('[API Client] API_URL_LOCAL:', API_URL_LOCAL);
+
+  // 프로덕션 환경에서는 항상 PROD URL 사용
+  const apiUrl = isDev ? API_URL_LOCAL : API_URL_PROD;
+
+  console.log('[API Client] 선택된 API URL:', apiUrl);
 
   return apiUrl;
 };
@@ -26,6 +32,13 @@ const apiClient = axios.create({
 // 요청 인터셉터 - 토큰 추가
 apiClient.interceptors.request.use(
   async (config) => {
+    console.log('[API Client] 요청 정보:', {
+      url: config.url,
+      baseURL: config.baseURL,
+      fullURL: `${config.baseURL}${config.url}`,
+      method: config.method,
+      headers: config.headers
+    });
     try {
       const token = await storage.getToken();
       console.log(`[API Client] Request to ${config.url}, token exists: ${!!token}`);
