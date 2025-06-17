@@ -19,6 +19,7 @@ import driverWebSocketService from '../services/driverWebSocketService';
 import { storage } from '../utils/storage';
 import { toKSTLocaleString, getNowKST, toKSTISOString } from '../utils/kstTimeUtils';
 import DriveEndConfirmationModal from '../components/DriveEndConfirmationModal';
+import { debugLocationSwap } from '../utils/locationSwapHelper';
 
 const DrivingScreen = ({ navigation, route }) => {
   const { drive } = route.params;
@@ -189,6 +190,9 @@ const DrivingScreen = ({ navigation, route }) => {
 
       // 목적지 근접 여부 확인
       if (drive.endLocation?.latitude && drive.endLocation?.longitude) {
+        // 디버깅: 좌표 확인
+        debugLocationSwap(location, drive.endLocation, '목적지 거리 계산');
+
         const distance = calculateDistance(
           location.latitude,
           location.longitude,

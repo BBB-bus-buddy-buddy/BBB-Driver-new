@@ -1,6 +1,7 @@
 // src/services/operationPlanService.js
 import { operationPlanAPI, formatDateForAPI } from '../api/operationPlan';
 import { formatKSTDate, isKSTToday, getMinutesFromNowKST } from '../utils/kstTimeUtils';
+import { swapScheduleLocations } from '../utils/locationSwapHelper';
 
 /**
  * 운행 계획 관리 서비스 (운전자 전용)
@@ -203,6 +204,9 @@ class OperationPlanService {
       }
     }
 
+    // 위치 정보 변환 (백엔드에서 위도/경도가 반대로 오는 이슈 대응)
+    const swappedSchedule = swapScheduleLocations(schedule);
+
     return {
       id: schedule.id || schedule.operationId,
       operationId: schedule.operationId || schedule.id,
@@ -230,9 +234,9 @@ class OperationPlanService {
       organizationId: schedule.organizationId,
       createdAt: schedule.createdAt,
       updatedAt: schedule.updatedAt,
-      // 위치 정보 추가 - 백엔드 LocationInfo 형식 그대로 전달
-      startLocation: schedule.startLocation || null,
-      endLocation: schedule.endLocation || null
+      // 위치 정보 추가 - 위도/경도가 변환된 데이터 사용
+      startLocation: swappedSchedule.startLocation || null,
+      endLocation: swappedSchedule.endLocation || null
     };
   }
 

@@ -21,6 +21,7 @@ import driverWebSocketService from '../services/driverWebSocketService';
 import { storage } from '../utils/storage';
 import WebSocketStatus from '../components/WebSocketStatus';
 import { createKSTDate, toKSTISOString, getMinutesFromNowKST } from '../utils/kstTimeUtils';
+import { debugLocationSwap } from '../utils/locationSwapHelper';
 
 // 간단한 아이콘 컴포넌트
 const SimpleIcon = ({ name, size = 24, color = COLORS.primary, style }) => {
@@ -216,6 +217,9 @@ const StartDriveScreen = ({ navigation, route }) => {
 
         // 출발지 정보가 있으면 거리 계산
         if (drive.startLocation?.latitude && drive.startLocation?.longitude) {
+          // 디버깅: 좌표 확인
+          debugLocationSwap(location, drive.startLocation, '출발지 거리 계산');
+
           const distance = calculateDistance(
             location.latitude,
             location.longitude,

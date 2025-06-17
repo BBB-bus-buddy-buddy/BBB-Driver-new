@@ -1,5 +1,6 @@
 // src/api/drive.js
 import apiClient from './client';
+import { swapScheduleLocations } from '../utils/locationSwapHelper';
 
 export const driveAPI = {
   /**
@@ -15,7 +16,13 @@ export const driveAPI = {
    * @returns {Promise} Response: ApiResponse<DriveStatusDTO>
    */
   startDrive: (data) => {
-    return apiClient.post('/api/drives/start', data);
+    return apiClient.post('/api/drives/start', data).then(response => {
+      // 위치 정보가 있으면 변환
+      if (response.data?.data) {
+        response.data.data = swapScheduleLocations(response.data.data);
+      }
+      return response;
+    });
   },
 
   /**
@@ -31,7 +38,13 @@ export const driveAPI = {
    * @returns {Promise} Response: ApiResponse<DriveStatusDTO>
    */
   endDrive: (data) => {
-    return apiClient.post('/api/drives/end', data);
+    return apiClient.post('/api/drives/end', data).then(response => {
+      // 위치 정보가 있으면 변환
+      if (response.data?.data) {
+        response.data.data = swapScheduleLocations(response.data.data);
+      }
+      return response;
+    });
   },
 
   /**
@@ -43,7 +56,13 @@ export const driveAPI = {
    * @returns {Promise} Response: ApiResponse<DriveStatusDTO>
    */
   getNextDrive: (params) => {
-    return apiClient.get('/api/drives/next', { params });
+    return apiClient.get('/api/drives/next', { params }).then(response => {
+      // 위치 정보가 있으면 변환
+      if (response.data?.data) {
+        response.data.data = swapScheduleLocations(response.data.data);
+      }
+      return response;
+    });
   },
 
   /**
@@ -72,7 +91,13 @@ export const driveAPI = {
    * @returns {Promise} Response: ApiResponse<DriveStatusDTO>
    */
   getDriveStatus: (operationId) => {
-    return apiClient.get(`/api/drives/status/${operationId}`);
+    return apiClient.get(`/api/drives/status/${operationId}`).then(response => {
+      // 위치 정보가 있으면 변환
+      if (response.data?.data) {
+        response.data.data = swapScheduleLocations(response.data.data);
+      }
+      return response;
+    });
   }
 };
 
