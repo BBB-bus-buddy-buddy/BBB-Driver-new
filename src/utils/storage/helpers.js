@@ -6,12 +6,13 @@ import { CURRENT_STORAGE_VERSION } from './keys';
  * 스토리지 헬퍼 함수들
  * 
  * @description storage 객체와 함께 사용되는 유틸리티 함수들
+ * - 동기화 간격을 5분에서 1분으로 단축
  */
 export const storageHelpers = {
   /**
    * 동기화 필요 여부 확인
    * 
-   * @description 마지막 동기화로부터 5분이 지났는지 확인
+   * @description 마지막 동기화로부터 1분이 지났는지 확인
    * @returns {Promise<boolean>} 동기화 필요 여부
    * @usage
    * if (await storageHelpers.needsSync()) {
@@ -23,8 +24,9 @@ export const storageHelpers = {
       const lastSync = await storage.getLastSync();
       if (!lastSync) return true;
 
-      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-      return lastSync < fiveMinutesAgo;
+      // 5분에서 1분으로 단축하여 더 자주 동기화
+      const oneMinuteAgo = new Date(Date.now() - 1 * 60 * 1000);
+      return lastSync < oneMinuteAgo;
     } catch (error) {
       console.error('동기화 필요 여부 확인 오류:', error);
       return true;
@@ -219,5 +221,32 @@ export const storageHelpers = {
         return Object.keys(memoryStore);
       }
     };
+  },
+
+  /**
+   * 캐시 강제 초기화
+   * 
+   * @description 모든 캐시된 데이터 강제 초기화
+   * @usage 데이터 동기화 문제 발생 시 사용
+   */
+  async forceClearCache() {
+    try {
+      console.log('[StorageHelpers] 캐시 강제 초기화 시작');
+      
+      // OperationPlanService 캐시 초기화
+      const OperationPlanService = require('../services/operationPlanService').default;
+      if (OperationPlanService) {
+        OperationPlanService.invalidateCache();
+      }
+      
+      // 동기화 시간 초기화 (다음 번에 강제 동기화)
+      await storage.setLastSync(null);
+      
+      console.log('[StorageHelpers] 캐시 강제 초기화 완료');
+      return true;
+    } catch (error) {
+      console.error('[StorageHelpers] 캐시 초기화 오류:', error);
+      return false;
+    }
   }
 };

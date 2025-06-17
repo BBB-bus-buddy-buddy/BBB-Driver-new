@@ -32,6 +32,17 @@ const HomeScreen = ({ navigation }) => {
   const [initialLoading, setInitialLoading] = useState(true);
   const [activeBottomTab, setActiveBottomTab] = useState('home');
 
+  // 화면 포커스 시 데이터 새로고침
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      console.log('[HomeScreen] 화면 포커스 - 데이터 새로고침');
+      // 화면에 돌아올 때마다 강제 새로고침
+      loadTodaySchedules(true);
+    });
+
+    return unsubscribe;
+  }, [navigation]);
+
   // 화면 로드 시 초기 데이터 로드
   useEffect(() => {
     initializeData();
@@ -51,8 +62,8 @@ const HomeScreen = ({ navigation }) => {
         return;
       }
 
-      // 운행 일정 로드
-      await loadTodaySchedules();
+      // 운행 일정 로드 (초기 로드는 캐시 사용 가능)
+      await loadTodaySchedules(false);
 
     } catch (error) {
       console.error('[HomeScreen] 초기화 오류:', error);
@@ -63,12 +74,14 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
-  const loadTodaySchedules = async () => {
+  const loadTodaySchedules = async (forceRefresh = false) => {
     try {
       setRefreshing(true);
 
-      // 오늘의 운행 일정 가져오기
-      const schedules = await OperationPlanService.getDriverTodaySchedules();
+      console.log('[HomeScreen] 운행 일정 로드 - 강제 새로고침:', forceRefresh);
+
+      // 오늘의 운행 일정 가져오기 (forceRefresh 파라미터 전달)
+      const schedules = await OperationPlanService.getDriverTodaySchedules(forceRefresh);
 
       console.log('[HomeScreen] API 응답 원본:', schedules);
 
@@ -114,7 +127,9 @@ const HomeScreen = ({ navigation }) => {
   };
 
   const onRefresh = async () => {
-    await loadTodaySchedules();
+    console.log('[HomeScreen] Pull-to-refresh 시작');
+    // Pull-to-refresh 시 항상 강제 새로고침
+    await loadTodaySchedules(true);
   };
 
   const handleSelectSchedule = async (schedule) => {
@@ -194,13 +209,34 @@ const HomeScreen = ({ navigation }) => {
             <Text style={styles.welcomeText}>안녕하세요,</Text>
             <Text style={styles.userName}>{userInfo?.name || '운전자'}님!</Text>
           </View>
+          {/* 수동 새로고침 버튼 추가 (선택사항) */}
+          <TouchableOpacity 
+            onPress={() => loadTodaySchedules(true)}
+            style={styles.refreshButton}
+          >
+            <Text style={styles.refreshButtonText}>🔄</Text>
+          </TouchableOpacity>
         </View>
 
         <ScrollView
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            <RefreshControl 
+              refreshing={refreshing} 
+              onRefresh={onRefresh}
+              colors={[COLORS.primary]}
+              tintColor={COLORS.primary}
+            />
           }>
+
+          {/* 새로고침 안내 메시지 */}
+          {driveSchedules.length > 0 && (
+            <View style={styles.refreshHint}>
+              <Text style={styles.refreshHintText}>
+                ⬇️ 아래로 당겨서 새로고침
+              </Text>
+            </View>
+          )}
 
           <View style={styles.driveSection}>
             <Text style={styles.sectionTitle}>오늘의 운행 일정</Text>
@@ -210,6 +246,12 @@ const HomeScreen = ({ navigation }) => {
                 <Text style={styles.noDriveText}>
                   오늘은 예정된 운행이 없습니다.
                 </Text>
+                <TouchableOpacity 
+                  style={styles.reloadButton}
+                  onPress={() => loadTodaySchedules(true)}
+                >
+                  <Text style={styles.reloadButtonText}>다시 확인</Text>
+                </TouchableOpacity>
               </View>
             ) : (
               <View style={styles.scheduleList}>
@@ -303,6 +345,24 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.black,
   },
+  refreshButton: {
+    padding: SPACING.sm,
+  },
+  refreshButtonText: {
+    fontSize: FONT_SIZE.xl,
+  },
+  refreshHint: {
+    alignItems: 'center',
+    paddingVertical: SPACING.xs,
+    backgroundColor: COLORS.secondary,
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.sm,
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  refreshHintText: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.primary,
+  },
   driveSection: {
     paddingHorizontal: SPACING.lg,
     marginBottom: SPACING.lg,
@@ -325,6 +385,18 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.md,
     color: COLORS.grey,
     textAlign: 'center',
+    marginBottom: SPACING.md,
+  },
+  reloadButton: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  reloadButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.medium,
   },
   scheduleList: {
     gap: SPACING.sm,

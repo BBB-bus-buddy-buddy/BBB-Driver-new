@@ -11,7 +11,7 @@ export class AuthService {
   static async login(token) {
     try {
       console.log('[AuthService] 로그인 시작');
-      
+
       // 토큰 유효성 검사
       if (!token || typeof token !== 'string' || token.trim() === '') {
         throw new Error('유효하지 않은 토큰입니다.');
@@ -21,13 +21,13 @@ export class AuthService {
       console.log('[AuthService] 토큰 저장 중...');
       let tokenSaved = false;
       let storageError = null;
-      
+
       try {
         tokenSaved = await storage.setToken(token);
       } catch (error) {
         console.error('[AuthService] 토큰 저장 오류:', error);
         storageError = error;
-        
+
         // manifest.json 에러인 경우 앱 재시작 권장
         if (error.message?.includes('manifest.json')) {
           // 스토리지 복구 시도
@@ -42,22 +42,22 @@ export class AuthService {
           }
         }
       }
-      
+
       // 토큰은 저장되었거나 메모리에 있으므로 계속 진행
       if (!tokenSaved && !storageError?.message?.includes('메모리 폴백')) {
         console.warn('[AuthService] 토큰 저장 실패했지만 계속 진행');
       }
-      
+
       console.log('[AuthService] 토큰 저장 완료 또는 메모리 폴백 사용');
 
       // 사용자 정보 가져오기
       console.log('[AuthService] 사용자 정보 조회 중...');
       const userResponse = await authAPI.getUser();
-      
+
       if (!userResponse || !userResponse.data) {
         throw new Error('서버 응답이 없습니다.');
       }
-      
+
       const userInfo = userResponse.data?.data;
 
       if (!userInfo) {
@@ -79,12 +79,12 @@ export class AuthService {
       // 사용자 정보 저장 - 에러 처리 강화
       console.log('[AuthService] 사용자 정보 저장 중...');
       let userInfoSaved = false;
-      
+
       try {
         userInfoSaved = await storage.setUserInfo(userInfo);
       } catch (error) {
         console.error('[AuthService] 사용자 정보 저장 오류:', error);
-        
+
         // 스토리지 오류가 발생해도 로그인은 성공으로 처리
         if (error.message?.includes('메모리 폴백')) {
           console.log('[AuthService] 사용자 정보 메모리 폴백 사용');
@@ -106,7 +106,7 @@ export class AuthService {
         userInfo,
         role: userInfo.role,
         needsAdditionalInfo: userInfo.role === 'ROLE_GUEST',
-        storageWarning: !tokenSaved || !userInfoSaved ? 
+        storageWarning: !tokenSaved || !userInfoSaved ?
           '일부 정보가 임시 저장되었습니다. 앱을 재시작하면 다시 로그인이 필요할 수 있습니다.' : null
       };
 
@@ -122,7 +122,7 @@ export class AuthService {
 
       // API 에러 처리
       let errorMessage = '로그인 처리 중 오류가 발생했습니다.';
-      
+
       if (error.response) {
         // 서버 응답 에러
         if (error.response.status === 401) {
@@ -175,7 +175,7 @@ export class AuthService {
       }
 
       const serverUserInfo = response.data.data;
-      
+
       // 필수 정보 검증
       if (!serverUserInfo.email || !serverUserInfo.role) {
         console.error('[AuthService] 서버 사용자 정보에 필수 데이터 누락');
@@ -199,7 +199,7 @@ export class AuthService {
 
       if (hasChanges) {
         console.log('[AuthService] 사용자 정보 변경 감지됨. 업데이트 중...');
-        
+
         try {
           await storage.setUserInfo(serverUserInfo);
         } catch (error) {
@@ -355,6 +355,7 @@ export class AuthService {
 
   /**
    * 동기화가 필요한지 확인
+   * 5분에서 1분으로 단축하여 더 자주 동기화
    */
   static async needsSync() {
     try {
@@ -376,7 +377,7 @@ export class AuthService {
         // 로컬 정보도 업데이트
         const currentUser = await this.getCurrentUser();
         const updatedUser = { ...currentUser, ...response.data.data };
-        
+
         try {
           await storage.setUserInfo(updatedUser);
         } catch (error) {

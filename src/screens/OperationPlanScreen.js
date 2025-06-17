@@ -28,14 +28,25 @@ const OperationPlanScreen = ({ navigation }) => {
   const [selectedScheduleDetail, setSelectedScheduleDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
+  // 화면 포커스 시 데이터 새로고침
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      console.log('[OperationPlanScreen] 화면 포커스 - 데이터 새로고침');
+      // 화면에 돌아올 때마다 강제 새로고침
+      loadInitialData(true);
+    });
+
+    return unsubscribe;
+  }, [navigation]);
+
   useEffect(() => {
     // 오늘 날짜로 초기화
     const today = new Date();
     const todayStr = formatDateForAPI(today);
     setSelectedDate(todayStr);
 
-    // 초기 데이터 로드
-    loadInitialData();
+    // 초기 데이터 로드 (캐시 사용 가능)
+    loadInitialData(false);
   }, []);
 
   const formatDateForAPI = (date) => {
@@ -45,19 +56,21 @@ const OperationPlanScreen = ({ navigation }) => {
     return `${year}-${month}-${day}`;
   };
 
-  const loadInitialData = async () => {
+  const loadInitialData = async (forceRefresh = false) => {
     try {
       setLoading(true);
 
-      // 오늘 날짜의 일정을 가져옴
-      const todaySchedules = await OperationPlanService.getDriverTodaySchedules();
+      console.log('[OperationPlanScreen] 초기 데이터 로드 - 강제 새로고침:', forceRefresh);
+
+      // 오늘 날짜의 일정을 가져옴 (forceRefresh 파라미터 전달)
+      const todaySchedules = await OperationPlanService.getDriverTodaySchedules(forceRefresh);
 
       const schedulesArray = Array.isArray(todaySchedules) ? todaySchedules : [];
       const formattedSchedules = OperationPlanService.formatScheduleList(schedulesArray);
       setSchedules(formattedSchedules);
 
       // 이번 달의 일정이 있는 날짜들을 표시하기 위해 추가 로드
-      await loadMonthSchedules();
+      await loadMonthSchedules(forceRefresh);
 
     } catch (error) {
       console.error('[OperationPlanScreen] 초기 데이터 로드 오류:', error);
@@ -67,10 +80,12 @@ const OperationPlanScreen = ({ navigation }) => {
     }
   };
 
-  const loadMonthSchedules = async () => {
+  const loadMonthSchedules = async (forceRefresh = false) => {
     try {
-      // 현재 달의 운행 일정을 조회
-      const monthSchedules = await OperationPlanService.getDriverCurrentMonthSchedules();
+      console.log('[OperationPlanScreen] 월별 일정 로드 - 강제 새로고침:', forceRefresh);
+
+      // 현재 달의 운행 일정을 조회 (forceRefresh 파라미터 전달)
+      const monthSchedules = await OperationPlanService.getDriverCurrentMonthSchedules(forceRefresh);
       const formattedSchedules = OperationPlanService.formatScheduleList(monthSchedules);
 
       // 캘린더 마킹 데이터 생성
@@ -84,8 +99,10 @@ const OperationPlanScreen = ({ navigation }) => {
   };
 
   const onRefresh = async () => {
+    console.log('[OperationPlanScreen] Pull-to-refresh 시작');
     setRefreshing(true);
-    await loadInitialData();
+    // Pull-to-refresh 시 항상 강제 새로고침
+    await loadInitialData(true);
     setRefreshing(false);
   };
 
@@ -94,7 +111,10 @@ const OperationPlanScreen = ({ navigation }) => {
 
     try {
       setLoading(true);
-      const dateSchedules = await OperationPlanService.getDriverSchedulesByDate(day.dateString);
+      console.log('[OperationPlanScreen] 날짜 선택 - 강제 새로고침');
+      
+      // 날짜 선택 시에도 강제 새로고침
+      const dateSchedules = await OperationPlanService.getDriverSchedulesByDate(day.dateString, true);
       const schedulesArray = Array.isArray(dateSchedules) ? dateSchedules : [];
       const formattedSchedules = OperationPlanService.formatScheduleList(schedulesArray);
       setSchedules(formattedSchedules);
@@ -123,8 +143,8 @@ const OperationPlanScreen = ({ navigation }) => {
       setDetailLoading(true);
       setModalVisible(true);
 
-      // 상세 정보 조회
-      const detail = await OperationPlanService.getScheduleDetail(schedule.operationId || schedule.id);
+      // 상세 정보 조회 (항상 최신 정보 조회)
+      const detail = await OperationPlanService.getScheduleDetail(schedule.operationId || schedule.id, true);
       
       if (detail) {
         const formattedDetail = OperationPlanService.formatScheduleData(detail);
@@ -151,7 +171,10 @@ const OperationPlanScreen = ({ navigation }) => {
 
   const handleMonthChange = async (month) => {
     try {
-      const monthSchedules = await OperationPlanService.getDriverMonthlySchedules(month.year, month.month);
+      console.log('[OperationPlanScreen] 월 변경 - 강제 새로고침');
+      
+      // 월 변경 시에도 강제 새로고침
+      const monthSchedules = await OperationPlanService.getDriverMonthlySchedules(month.year, month.month, true);
       const formattedSchedules = OperationPlanService.formatScheduleList(monthSchedules);
 
       // 캘린더 마킹 데이터 생성
@@ -342,15 +365,34 @@ const OperationPlanScreen = ({ navigation }) => {
       <View style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>운행 일정</Text>
+          {/* 수동 새로고침 버튼 추가 */}
+          <TouchableOpacity 
+            onPress={() => loadInitialData(true)}
+            style={styles.refreshButton}
+          >
+            <Text style={styles.refreshButtonText}>🔄</Text>
+          </TouchableOpacity>
         </View>
 
         <ScrollView
           style={styles.scrollView}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            <RefreshControl 
+              refreshing={refreshing} 
+              onRefresh={onRefresh}
+              colors={[COLORS.primary]}
+              tintColor={COLORS.primary}
+            />
           }
         >
+          {/* 새로고침 안내 */}
+          <View style={styles.refreshHint}>
+            <Text style={styles.refreshHintText}>
+              ⬇️ 아래로 당겨서 새로고침
+            </Text>
+          </View>
+
           {/* 캘린더 */}
           <View style={styles.calendarContainer}>
             <Calendar
@@ -444,6 +486,12 @@ const OperationPlanScreen = ({ navigation }) => {
             ) : (
               <View style={styles.noScheduleContainer}>
                 <Text style={styles.noScheduleText}>예정된 일정이 없습니다.</Text>
+                <TouchableOpacity 
+                  style={styles.reloadButton}
+                  onPress={() => handleDateSelect({ dateString: selectedDate })}
+                >
+                  <Text style={styles.reloadButtonText}>다시 확인</Text>
+                </TouchableOpacity>
               </View>
             )}
           </View>
@@ -474,7 +522,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     padding: SPACING.lg,
     backgroundColor: COLORS.white,
     borderBottomWidth: 1,
@@ -485,8 +535,27 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.black,
   },
+  refreshButton: {
+    padding: SPACING.sm,
+  },
+  refreshButtonText: {
+    fontSize: FONT_SIZE.xl,
+  },
   scrollView: {
     flex: 1,
+  },
+  refreshHint: {
+    alignItems: 'center',
+    paddingVertical: SPACING.xs,
+    backgroundColor: COLORS.secondary,
+    marginHorizontal: SPACING.lg,
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.sm,
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  refreshHintText: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.primary,
   },
   calendarContainer: {
     backgroundColor: COLORS.white,
@@ -594,6 +663,18 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.md,
     color: COLORS.grey,
     textAlign: 'center',
+    marginBottom: SPACING.md,
+  },
+  reloadButton: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  reloadButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: FONT_WEIGHT.medium,
   },
   bottomPadding: {
     height: 80,
