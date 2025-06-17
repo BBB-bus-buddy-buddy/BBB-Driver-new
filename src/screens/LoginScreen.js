@@ -1,5 +1,5 @@
 // src/screens/LoginScreen.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -22,22 +22,32 @@ import {
 } from '../constants/theme';
 import InAppBrowser from 'react-native-inappbrowser-reborn';
 import { AuthService } from '../services';
+import { API_URL_LOCAL, API_URL_PROD, GOOGLE_OAUTH2_LOGIN_ENDPOINT } from '@env';
 
 const PLATFORM_CONSTANTS = {
-  OAUTH_URL: 'http://localhost:8088/oauth2/authorization/google?app=driver',
+  // OAuth는 항상 공개 도메인 사용 (Google이 프라이빗 IP를 허용하지 않음)
+  OAUTH_URL: `${API_URL_PROD}${GOOGLE_OAUTH2_LOGIN_ENDPOINT}?app=driver`,
   REDIRECT_SCHEME: Platform.select({
     ios: 'org.reactjs.native.example.driver://oauth2callback',
     android: 'com.driver://oauth2callback',
   }),
 };
 
+// LoginScreen 컴포넌트 내부
 const LoginScreen = () => {
   const [loading, setLoading] = useState(false);
   const navigation = useNavigation();
 
+  // 디버깅을 위한 로그 추가
+  useEffect(() => {
+    console.log('[LoginScreen] 환경:', __DEV__ ? '개발' : '프로덕션');
+    console.log('[LoginScreen] OAuth URL:', PLATFORM_CONSTANTS.OAUTH_URL);
+  }, []);
+
   const handleGoogleSignIn = async () => {
     try {
       console.log(`[LoginScreen] Google 로그인 시작 (플랫폼: ${Platform.OS})`);
+      console.log(`[LoginScreen] OAuth URL: ${PLATFORM_CONSTANTS.OAUTH_URL}`);
       setLoading(true);
 
       const authUrl = PLATFORM_CONSTANTS.OAUTH_URL;
@@ -70,7 +80,7 @@ const LoginScreen = () => {
 
         if (loginResult.success) {
           console.log('[LoginScreen] 로그인 성공:', loginResult.userInfo.email);
-          
+
           // 스토리지 경고가 있는 경우 사용자에게 알림
           if (loginResult.storageWarning) {
             Alert.alert(
@@ -168,7 +178,7 @@ const LoginScreen = () => {
         <Text style={styles.infoText}>
           비회원이라면, 구글 로그인 후 자동으로 회원가입 화면으로 전환됩니다.
         </Text>
-        
+
         {/* 디버그 정보 - 개발 환경에서만 표시 */}
         {__DEV__ && (
           <View style={styles.debugInfo}>

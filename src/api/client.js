@@ -3,10 +3,21 @@ import axios from 'axios';
 import { storage } from '../utils/storage';
 import { API_URL_PROD, API_URL_LOCAL, API_TIMEOUT } from '@env';
 
+// 환경에 따른 API URL 선택
+const getApiUrl = () => {
+  // __DEV__는 개발 모드에서 true, 프로덕션 빌드에서 false
+  const apiUrl = __DEV__ ? API_URL_LOCAL : API_URL_PROD;
+  
+  console.log('[API Client] 환경:', __DEV__ ? '개발' : '프로덕션');
+  console.log('[API Client] API URL:', apiUrl);
+  
+  return apiUrl;
+};
+
 // axios 인스턴스 생성
 const apiClient = axios.create({
-  baseURL: API_URL_LOCAL, // 기본값 설정
-  timeout: API_TIMEOUT,
+  baseURL: getApiUrl(),
+  timeout: parseInt(API_TIMEOUT) || 10000,
   headers: {
     'Content-Type': 'application/json',
   }

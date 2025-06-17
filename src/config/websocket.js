@@ -4,8 +4,11 @@ import { API_URL_LOCAL, API_URL_PROD } from '@env';
 /**
  * WebSocket URL 설정
  */
-export const getWebSocketUrl = (isDevelopment = __DEV__) => {
-  const baseUrl = isDevelopment ? API_URL_LOCAL : API_URL_PROD;
+export const getWebSocketUrl = () => {
+  const baseUrl = __DEV__ ? API_URL_LOCAL : API_URL_PROD;
+  
+  console.log('[WebSocket Config] 환경:', __DEV__ ? '개발' : '프로덕션');
+  console.log('[WebSocket Config] Base URL:', baseUrl);
   
   // HTTP를 WS로, HTTPS를 WSS로 변환
   const wsUrl = baseUrl
