@@ -15,10 +15,11 @@ import { driveAPI } from '../api/drive';
 import { startLocationTracking, stopLocationTracking, getCurrentLocation } from '../services/locationService';
 import driverWebSocketService from '../services/driverWebSocketService';
 import { storage } from '../utils/storage';
+import { toKSTLocaleString, getNowKST, toKSTISOString } from '../utils/kstTimeUtils';
 
 const DrivingScreen = ({ navigation, route }) => {
   const { drive } = route.params;
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const [currentTime, setCurrentTime] = useState(getNowKST());
   const [nextStopInfo, setNextStopInfo] = useState(null);
   const [isNearDestination, setIsNearDestination] = useState(false);
   const [elapsedTime, setElapsedTime] = useState('00:00:00');
@@ -355,7 +356,7 @@ const DrivingScreen = ({ navigation, route }) => {
         const enrichedCompletedDrive = {
           ...drive,
           ...completedDrive,
-          actualEnd: completedDrive.actualEnd || new Date().toISOString(),
+          actualEnd: completedDrive.actualEnd || toKSTISOString(new Date()),
           totalPassengers,
           boardedCount,
           alightedCount,
@@ -427,7 +428,7 @@ const DrivingScreen = ({ navigation, route }) => {
               <View style={styles.timeInfoItem}>
                 <Text style={styles.timeInfoLabel}>운행 시작</Text>
                 <Text style={styles.timeInfoValue}>
-                  {new Date(drive.actualStart || drive.scheduledStart).toLocaleTimeString('ko-KR', {
+                  {toKSTLocaleString(drive.actualStart || drive.scheduledStart, {
                     hour: '2-digit',
                     minute: '2-digit',
                   })}
@@ -437,7 +438,7 @@ const DrivingScreen = ({ navigation, route }) => {
               <View style={styles.timeInfoItem}>
                 <Text style={styles.timeInfoLabel}>현재 시간</Text>
                 <Text style={styles.timeInfoValue}>
-                  {currentTime.toLocaleTimeString('ko-KR', {
+                  {toKSTLocaleString(currentTime, {
                     hour: '2-digit',
                     minute: '2-digit',
                   })}

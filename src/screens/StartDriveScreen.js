@@ -1,4 +1,4 @@
-// src/screens/StartDriveScreen.js
+// src/screens/StartDriveScreen.js (KST 시간 적용 부분)
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -19,6 +19,7 @@ import {
 import driverWebSocketService from '../services/driverWebSocketService';
 import { storage } from '../utils/storage';
 import WebSocketStatus from '../components/WebSocketStatus';
+import { createKSTDate, toKSTISOString } from '../utils/kstTimeUtils';
 
 const StartDriveScreen = ({ navigation, route }) => {
   // route.params가 없거나 drive가 없는 경우 처리
@@ -256,15 +257,13 @@ const StartDriveScreen = ({ navigation, route }) => {
       } : null
     };
 
-    // 출발 시간 확인
+    // 출발 시간 확인 - KST 기준
     const now = new Date();
     let scheduledStart;
 
     const timeStr = drive.startTime || drive.departureTime?.split(' ').pop();
     if (timeStr && drive.operationDate) {
-      const [hours, minutes] = timeStr.split(':');
-      const [year, month, day] = drive.operationDate.split('-');
-      scheduledStart = new Date(year, month - 1, day, parseInt(hours), parseInt(minutes));
+      scheduledStart = createKSTDate(drive.operationDate, timeStr);
     } else if (drive.scheduledStart) {
       scheduledStart = new Date(drive.scheduledStart);
     } else {
@@ -309,7 +308,7 @@ const StartDriveScreen = ({ navigation, route }) => {
         const currentDriveInfo = {
           ...drive,
           ...driveData,
-          actualStart: driveData.actualStart || new Date().toISOString(),
+          actualStart: driveData.actualStart || toKSTISOString(new Date()),
           status: 'IN_PROGRESS',
           organizationId: drive.organizationId || (await storage.getUserInfo())?.organizationId
         };

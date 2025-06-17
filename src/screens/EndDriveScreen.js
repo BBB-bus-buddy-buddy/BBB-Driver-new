@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, SHADOWS, SPACING } from '../constants/theme';
 import { driveAPI } from '../api/drive';
 import { storage } from '../utils/storage';
+import { toKSTLocaleString, createKSTDate } from '../utils/kstTimeUtils';
 
 const EndDriveScreen = ({ navigation, route }) => {
   const { drive } = route.params;
@@ -132,7 +133,7 @@ const EndDriveScreen = ({ navigation, route }) => {
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>출발 시간</Text>
             <Text style={styles.infoValue}>
-              {new Date(drive.actualStart || drive.scheduledStart).toLocaleString('ko-KR', {
+              {toKSTLocaleString(drive.actualStart || drive.scheduledStart, {
                 month: 'numeric',
                 day: 'numeric',
                 hour: '2-digit',
@@ -144,7 +145,7 @@ const EndDriveScreen = ({ navigation, route }) => {
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>도착 시간</Text>
             <Text style={styles.infoValue}>
-              {new Date(drive.actualEnd || new Date()).toLocaleString('ko-KR', {
+              {toKSTLocaleString(drive.actualEnd || new Date(), {
                 month: 'numeric',
                 day: 'numeric',
                 hour: '2-digit',
@@ -206,7 +207,7 @@ const EndDriveScreen = ({ navigation, route }) => {
               <Text style={styles.infoLabel}>출발 시간</Text>
               <Text style={styles.infoValue}>
                 {nextDrive.startTime || 
-                 new Date(nextDrive.scheduledStart).toLocaleTimeString('ko-KR', {
+                 toKSTLocaleString(nextDrive.scheduledStart, {
                   hour: '2-digit',
                   minute: '2-digit'
                 })}
@@ -217,7 +218,7 @@ const EndDriveScreen = ({ navigation, route }) => {
               <Text style={styles.infoLabel}>도착 예정</Text>
               <Text style={styles.infoValue}>
                 {nextDrive.endTime ||
-                 new Date(nextDrive.scheduledEnd).toLocaleTimeString('ko-KR', {
+                 toKSTLocaleString(nextDrive.scheduledEnd, {
                   hour: '2-digit',
                   minute: '2-digit'
                 })}
@@ -276,9 +277,7 @@ const EndDriveScreen = ({ navigation, route }) => {
     let nextStart;
     
     if (nextDrive.operationDate && nextDrive.startTime) {
-      const [year, month, day] = nextDrive.operationDate.split('-');
-      const [hours, minutes] = nextDrive.startTime.split(':');
-      nextStart = new Date(year, month - 1, day, parseInt(hours), parseInt(minutes));
+      nextStart = createKSTDate(nextDrive.operationDate, nextDrive.startTime);
     } else if (nextDrive.scheduledStart) {
       nextStart = new Date(nextDrive.scheduledStart);
     } else {

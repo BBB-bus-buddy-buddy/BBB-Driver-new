@@ -1,5 +1,6 @@
 // src/services/operationPlanService.js
 import { operationPlanAPI, formatDateForAPI } from '../api/operationPlan';
+import { formatKSTDate, isKSTToday, getMinutesFromNowKST } from '../utils/kstTimeUtils';
 
 /**
  * 운행 계획 관리 서비스 (운전자 전용)
@@ -36,7 +37,7 @@ class OperationPlanService {
   async getDriverTodaySchedules(forceRefresh = false) {
     try {
       if (!forceRefresh && this.isCacheValid()) {
-        const today = formatDateForAPI(new Date());
+        const today = formatKSTDate(new Date());
         const todaySchedules = this.cachedSchedules.filter(schedule =>
           schedule.operationDate === today
         );
@@ -226,14 +227,10 @@ class OperationPlanService {
   }
 
   /**
-   * 현재 날짜를 YYYY-MM-DD 형식으로 반환
+   * 현재 날짜를 YYYY-MM-DD 형식으로 반환 (KST)
    */
   getCurrentDateString() {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    return formatKSTDate(new Date());
   }
 
   /**
@@ -285,29 +282,18 @@ class OperationPlanService {
   }
 
   /**
-   * 오늘 날짜인지 확인
+   * 오늘 날짜인지 확인 (KST)
    */
   isToday(dateString) {
-    const today = new Date();
-    const [year, month, day] = dateString.split('-').map(Number);
-
-    return today.getFullYear() === year &&
-      today.getMonth() + 1 === month &&
-      today.getDate() === day;
+    return isKSTToday(dateString);
   }
 
   /**
    * 운행 시간이 임박했는지 확인 (1시간 이내)
    */
   isUpcoming(operationDate, startTime) {
-    const now = new Date();
-    const [year, month, day] = operationDate.split('-').map(Number);
-    const [hour, minute] = startTime.split(':').map(Number);
-
-    const scheduleTime = new Date(year, month - 1, day, hour, minute);
-    const timeDiff = scheduleTime - now;
-
-    return timeDiff > 0 && timeDiff <= 60 * 60 * 1000; // 1시간 이내
+    const minutesFromNow = getMinutesFromNowKST(operationDate, startTime);
+    return minutesFromNow > 0 && minutesFromNow <= 60; // 1시간 이내
   }
 
   /**

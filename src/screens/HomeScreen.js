@@ -23,6 +23,7 @@ import {
 import OperationPlanService from '../services/operationPlanService';
 import { storage } from '../utils/storage';
 import BottomTabBar from '../components/BottomTabBar';
+import { createKSTDate, getNowKST } from '../utils/kstTimeUtils';
 
 const HomeScreen = ({ navigation }) => {
   const [userInfo, setUserInfo] = useState(null);
@@ -148,13 +149,11 @@ const HomeScreen = ({ navigation }) => {
       case 'IN_PROGRESS':
         return { text: '운행 중', color: COLORS.success };
       case 'SCHEDULED':
-        const now = new Date();
+        const now = getNowKST();
         const startTimeStr = schedule.startTime || schedule.departureTime?.split(' ').pop();
 
-        if (startTimeStr) {
-          const [hours, minutes] = startTimeStr.split(':');
-          const startTime = new Date();
-          startTime.setHours(parseInt(hours), parseInt(minutes), 0);
+        if (startTimeStr && schedule.operationDate) {
+          const startTime = createKSTDate(schedule.operationDate, startTimeStr);
 
           // 출발 1시간 전부터 운행 대기 상태
           const oneHourBefore = new Date(startTime.getTime() - 60 * 60 * 1000);
