@@ -22,14 +22,14 @@ import DriveEndConfirmationModal from '../components/DriveEndConfirmationModal';
 
 const DrivingScreen = ({ navigation, route }) => {
   const { drive } = route.params;
-  
+
   // 상태 관리
   const [currentTime, setCurrentTime] = useState(getNowKST());
   const [elapsedTime, setElapsedTime] = useState('00:00:00');
   const [locationTrackingId, setLocationTrackingId] = useState(null);
   const [wsConnected, setWsConnected] = useState(false);
   const [currentLocationInfo, setCurrentLocationInfo] = useState(null);
-  
+
   // 운행 정보 상태
   const [drivingInfo, setDrivingInfo] = useState({
     occupiedSeats: 0,
@@ -40,7 +40,7 @@ const DrivingScreen = ({ navigation, route }) => {
     averageSpeed: 0,
     totalDistance: 0,
   });
-  
+
   // 정류장 정보 상태
   const [stationInfo, setStationInfo] = useState({
     currentStation: null,
@@ -48,21 +48,21 @@ const DrivingScreen = ({ navigation, route }) => {
     remainingStations: 0,
     progress: 0,
   });
-  
+
   // 목적지 정보 상태
   const [destinationInfo, setDestinationInfo] = useState({
     isNear: false,
     distance: null,
     estimatedTime: null,
   });
-  
+
   // 운행 종료 모달 상태
   const [showEndConfirmModal, setShowEndConfirmModal] = useState(false);
-  
+
   // 애니메이션
   const progressAnimation = useRef(new Animated.Value(0)).current;
   const pulseAnimation = useRef(new Animated.Value(1)).current;
-  
+
   const appState = useRef(AppState.currentState);
   const locationUpdateInterval = useRef(null);
   const speedHistory = useRef([]);
@@ -150,29 +150,37 @@ const DrivingScreen = ({ navigation, route }) => {
 
     // 위치 추적 시작
     const watchId = startLocationTracking((location) => {
+      console.log('[DrivingScreen] GPS 위치 업데이트:', {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        speed: location.speed,
+        accuracy: location.accuracy,
+        timestamp: new Date(location.timestamp).toLocaleTimeString()
+      });
+
       currentLocation = location;
       setCurrentLocationInfo(location);
-      
+
       // 속도 정보 업데이트
       if (location.speed !== null && location.speed !== undefined) {
         const speedKmh = location.speed * 3.6; // m/s를 km/h로 변환
         speedHistory.current.push(speedKmh);
-        
+
         // 최근 10개의 속도만 유지
         if (speedHistory.current.length > 10) {
           speedHistory.current.shift();
         }
-        
+
         // 평균 속도 계산
         const avgSpeed = speedHistory.current.reduce((a, b) => a + b, 0) / speedHistory.current.length;
-        
+
         setDrivingInfo(prev => ({
           ...prev,
           currentSpeed: Math.round(speedKmh),
           averageSpeed: Math.round(avgSpeed),
         }));
       }
-      
+
       // WebSocket으로 위치 전송
       if (driverWebSocketService.checkConnection()) {
         driverWebSocketService.updateCurrentLocation(location);
@@ -187,10 +195,17 @@ const DrivingScreen = ({ navigation, route }) => {
           drive.endLocation.latitude,
           drive.endLocation.longitude
         );
-        
+
         const distanceInMeters = distance * 1000; // km를 m로 변환
         const estimatedTime = estimateArrivalTime(distanceInMeters, location.speed || 8.33);
-        
+
+        console.log('[DrivingScreen] 목적지까지 거리:', {
+          목적지: drive.endLocation.name,
+          거리_미터: distanceInMeters,
+          예상_도착: estimatedTime,
+          근처여부: distance < 0.1
+        });
+
         setDestinationInfo({
           isNear: distance < 0.1, // 100m = 0.1km
           distance: distanceInMeters,
@@ -220,7 +235,7 @@ const DrivingScreen = ({ navigation, route }) => {
       driverWebSocketService.off('stationUpdate');
       driverWebSocketService.off('passengerBoarding');
       driverWebSocketService.off('boarding');
-      
+
       // 위치 추적 중지
       if (locationTrackingId) {
         stopLocationTracking(locationTrackingId);
@@ -235,7 +250,7 @@ const DrivingScreen = ({ navigation, route }) => {
   // WebSocket 메시지 핸들러들
   const handleBusUpdate = (message) => {
     console.log('[DrivingScreen] 버스 상태 업데이트:', message);
-    
+
     if (message.data) {
       // 승객 수 업데이트
       if (message.data.occupiedSeats !== undefined) {
@@ -249,17 +264,17 @@ const DrivingScreen = ({ navigation, route }) => {
 
   const handleStationUpdate = (message) => {
     console.log('[DrivingScreen] 정류장 업데이트:', message);
-    
+
     if (message.data) {
       const { currentStation, nextStation, progress, remainingStations } = message.data;
-      
+
       setStationInfo({
         currentStation,
         nextStation,
         remainingStations: remainingStations || 0,
         progress: progress || 0,
       });
-      
+
       // 진행률 애니메이션
       Animated.timing(progressAnimation, {
         toValue: progress || 0,
@@ -271,9 +286,9 @@ const DrivingScreen = ({ navigation, route }) => {
 
   const handlePassengerBoarding = (message) => {
     console.log('[DrivingScreen] 승객 탑승/하차:', message);
-    
+
     const { action, userId, passengerInfo } = message.data || message;
-    
+
     if (action === 'BOARD' || action === 'board') {
       setDrivingInfo(prev => ({
         ...prev,
@@ -281,7 +296,7 @@ const DrivingScreen = ({ navigation, route }) => {
         boardedCount: prev.boardedCount + 1,
         totalPassengers: prev.totalPassengers + 1,
       }));
-      
+
       // 탑승 알림
       showPassengerNotification('탑승', passengerInfo);
     } else if (action === 'ALIGHT' || action === 'alight') {
@@ -290,7 +305,7 @@ const DrivingScreen = ({ navigation, route }) => {
         occupiedSeats: Math.max(0, prev.occupiedSeats - 1),
         alightedCount: prev.alightedCount + 1,
       }));
-      
+
       // 하차 알림
       showPassengerNotification('하차', passengerInfo);
     }
@@ -306,14 +321,14 @@ const DrivingScreen = ({ navigation, route }) => {
   const handleAppStateChange = (nextAppState) => {
     if (appState.current === 'background' && nextAppState === 'active') {
       console.log('[DrivingScreen] 앱이 포그라운드로 전환됨');
-      
+
       // WebSocket 재연결 확인
       if (!driverWebSocketService.checkConnection()) {
         const reconnect = async () => {
           try {
             const userInfo = await storage.getUserInfo();
             const organizationId = drive.organizationId || userInfo?.organizationId;
-            
+
             await driverWebSocketService.connect(
               drive.busNumber || drive.busRealNumber,
               organizationId,
@@ -350,7 +365,7 @@ const DrivingScreen = ({ navigation, route }) => {
 
       if (response.data.success && response.data.data) {
         const updateData = response.data.data;
-        
+
         // 다음 정류장 정보 업데이트
         if (updateData.nextStop) {
           setStationInfo(prev => ({
@@ -358,7 +373,7 @@ const DrivingScreen = ({ navigation, route }) => {
             nextStation: updateData.nextStop,
           }));
         }
-        
+
         // 목적지 근접 여부 업데이트
         if (updateData.isNearDestination !== undefined) {
           setDestinationInfo(prev => ({
@@ -377,25 +392,25 @@ const DrivingScreen = ({ navigation, route }) => {
     const R = 6371; // 지구 반경 (km)
     const dLat = toRad(lat2 - lat1);
     const dLon = toRad(lon2 - lon1);
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * 
-      Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   };
 
-  const toRad = (deg) => deg * (Math.PI/180);
+  const toRad = (deg) => deg * (Math.PI / 180);
 
   // 도착 예상 시간 계산
   const estimateArrivalTime = (distanceInMeters, speedMs) => {
     if (distanceInMeters <= 0 || !speedMs || speedMs <= 0) {
       return '도착';
     }
-    
+
     const seconds = distanceInMeters / speedMs;
     const minutes = Math.ceil(seconds / 60);
-    
+
     if (minutes < 1) {
       return '곧 도착';
     } else if (minutes < 60) {
@@ -469,15 +484,15 @@ const DrivingScreen = ({ navigation, route }) => {
     try {
       // 운행 종료 상태 전송
       driverWebSocketService.sendBusStatusUpdate('COMPLETED');
-      
+
       // WebSocket 연결 해제
       driverWebSocketService.disconnect();
-      
+
       // 위치 추적 중지
       if (locationTrackingId) {
         stopLocationTracking(locationTrackingId);
       }
-      
+
       // 위치 업데이트 인터벌 중지
       if (locationUpdateInterval.current) {
         clearInterval(locationUpdateInterval.current);
@@ -505,7 +520,7 @@ const DrivingScreen = ({ navigation, route }) => {
 
       if (response.data.success) {
         const completedDrive = response.data.data;
-        
+
         // 운행 정보에 추가 데이터 포함
         const enrichedCompletedDrive = {
           ...drive,
@@ -514,13 +529,13 @@ const DrivingScreen = ({ navigation, route }) => {
           ...drivingInfo,
           totalDistance: (drivingInfo.totalDistance / 1000).toFixed(1), // km 단위로 변환
         };
-        
+
         // 운행 정보 저장
         await storage.setCompletedDrive(enrichedCompletedDrive);
         await storage.removeCurrentDrive();
-        
+
         // 운행 종료 화면으로 이동
-        navigation.replace('EndDrive', { 
+        navigation.replace('EndDrive', {
           drive: enrichedCompletedDrive
         });
       } else {
@@ -600,7 +615,7 @@ const DrivingScreen = ({ navigation, route }) => {
         {(stationInfo.currentStation || stationInfo.nextStation) && (
           <View style={styles.stationProgressCard}>
             <Text style={styles.sectionTitle}>정류장 진행 상황</Text>
-            
+
             {/* 진행 바 */}
             <View style={styles.progressBarContainer}>
               <View style={styles.progressBarBackground}>
@@ -662,11 +677,11 @@ const DrivingScreen = ({ navigation, route }) => {
               </Text>
               <Text style={styles.destinationTitle}>도착지</Text>
             </View>
-            
+
             <Text style={styles.destinationName}>
               {drive.endLocation.name || '도착지'}
             </Text>
-            
+
             {destinationInfo.distance !== null && (
               <View style={styles.destinationInfo}>
                 <Text style={[styles.distanceText, destinationInfo.isNear && styles.nearDistanceText]}>
