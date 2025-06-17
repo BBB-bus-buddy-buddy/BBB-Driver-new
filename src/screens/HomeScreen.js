@@ -70,7 +70,19 @@ const HomeScreen = ({ navigation }) => {
       // 오늘의 운행 일정 가져오기
       const schedules = await OperationPlanService.getDriverTodaySchedules();
 
+      console.log('[HomeScreen] API 응답 원본:', schedules);
+
       if (Array.isArray(schedules)) {
+        // 위치 정보 확인을 위한 로깅
+        schedules.forEach((schedule, index) => {
+          console.log(`[HomeScreen] 일정 ${index + 1} 위치 정보:`, {
+            id: schedule.id || schedule.operationId,
+            busNumber: schedule.busNumber,
+            startLocation: schedule.startLocation,
+            endLocation: schedule.endLocation
+          });
+        });
+
         // 시간순으로 정렬
         const sortedSchedules = schedules.sort((a, b) => {
           const timeA = a.startTime || a.departureTime;
@@ -80,6 +92,14 @@ const HomeScreen = ({ navigation }) => {
 
         // 포맷된 일정으로 변환
         const formattedSchedules = OperationPlanService.formatScheduleList(sortedSchedules);
+
+        console.log('[HomeScreen] 포맷된 일정:', formattedSchedules.map(s => ({
+          id: s.id,
+          busNumber: s.busNumber,
+          startLocation: s.startLocation,
+          endLocation: s.endLocation
+        })));
+
         setDriveSchedules(formattedSchedules);
       } else {
         setDriveSchedules([]);
