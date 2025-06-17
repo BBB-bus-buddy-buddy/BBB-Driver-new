@@ -121,3 +121,22 @@ export const toKST = (utcDate) => {
     const diffMs = targetDate.getTime() - now.getTime();
     return Math.floor(diffMs / (1000 * 60));
   };
+
+  /**
+ * 두 날짜 사이의 차이를 계산하여 HH:mm:ss 형태로 반환
+ * @param {Date|string} startDate - 시작 날짜
+ * @param {Date|string} endDate - 종료 날짜
+ * @returns {string} 형식화된 경과 시간
+ */
+export const getTimeDifference = (startDate, endDate) => {
+  const start = typeof startDate === 'string' ? new Date(startDate) : startDate;
+  const end = typeof endDate === 'string' ? new Date(endDate) : endDate;
+  
+  const diffInMs = end.getTime() - start.getTime();
+  
+  const hours = Math.floor(diffInMs / (1000 * 60 * 60)).toString().padStart(2, '0');
+  const minutes = Math.floor((diffInMs % (1000 * 60 * 60)) / (1000 * 60)).toString().padStart(2, '0');
+  const seconds = Math.floor((diffInMs % (1000 * 60)) / 1000).toString().padStart(2, '0');
+  
+  return `${hours}:${minutes}:${seconds}`;
+};

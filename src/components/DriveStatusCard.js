@@ -1,9 +1,28 @@
 // src/components/DriveStatusCard.js
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
 import { COLORS, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, SHADOWS, SPACING } from '../constants/theme';
+import { formatKSTTime } from '../utils/kstTimeUtils';
 
 const DriveStatusCard = ({ drive, onPress, isActive }) => {
+  // 시간 표시를 위한 헬퍼 함수
+  const getTimeDisplay = (timeString) => {
+    if (!timeString) return '시간 정보 없음';
+    
+    // "YYYY년 MM월 DD일 HH:mm" 형식에서 시간만 추출
+    const match = timeString.match(/\d{2}:\d{2}/);
+    if (match) {
+      return match[0];
+    }
+    
+    // ISO 형식이거나 다른 형식인 경우
+    try {
+      return formatKSTTime(timeString);
+    } catch {
+      return timeString;
+    }
+  };
+
   return (
     <View style={styles.driveCard}>
       <View style={styles.driveHeader}>
@@ -20,11 +39,11 @@ const DriveStatusCard = ({ drive, onPress, isActive }) => {
         </View>
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>출발:</Text>
-          <Text style={styles.infoValue}>{drive.departureTime}</Text>
+          <Text style={styles.infoValue}>{getTimeDisplay(drive.departureTime)}</Text>
         </View>
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>도착:</Text>
-          <Text style={styles.infoValue}>{drive.arrivalTime}</Text>
+          <Text style={styles.infoValue}>{getTimeDisplay(drive.arrivalTime)}</Text>
         </View>
       </View>
 
