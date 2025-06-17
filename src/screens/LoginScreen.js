@@ -22,10 +22,10 @@ import {
 } from '../constants/theme';
 import InAppBrowser from 'react-native-inappbrowser-reborn';
 import { AuthService } from '../services';
-import { API_URL_LOCAL, API_URL_PROD, GOOGLE_OAUTH2_LOGIN_ENDPOINT } from '@env';
+import { API_URL_PROD, GOOGLE_OAUTH2_LOGIN_ENDPOINT } from '@env';
 
 const PLATFORM_CONSTANTS = {
-  // OAuth는 항상 공개 도메인 사용 (Google이 프라이빗 IP를 허용하지 않음)
+  // OAuth는 항상 프로덕션 URL 사용 (Google이 로컬호스트 OAuth를 지원하지 않음)
   OAUTH_URL: `${API_URL_PROD}${GOOGLE_OAUTH2_LOGIN_ENDPOINT}?app=driver`,
   REDIRECT_SCHEME: Platform.select({
     ios: 'org.reactjs.native.example.driver://oauth2callback',
