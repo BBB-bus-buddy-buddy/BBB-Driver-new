@@ -200,7 +200,7 @@ const DrivingScreen = ({ navigation, route }) => {
       if (driverWebSocketService.checkConnection()) {
         // 현재 위치 업데이트
         driverWebSocketService.updateCurrentLocation(location);
-        
+
         // 위치와 좌석 정보 전송
         driverWebSocketService.sendLocationUpdate(location, drivingInfo.occupiedSeats);
       }
@@ -491,7 +491,7 @@ const DrivingScreen = ({ navigation, route }) => {
           ...completedDrive,
           actualEnd: completedDrive.actualEnd || toKSTISOString(new Date()),
           ...drivingInfo,
-          totalDistance: (drivingInfo.totalDistance / 1000).toFixed(1), // km 단위로 변환
+          totalDistance: drivingInfo.totalDistance ? (drivingInfo.totalDistance / 1000).toFixed(1) : '0.0', // km 단위로 변환, 기본값 0.0
         };
 
         // 운행 정보 저장

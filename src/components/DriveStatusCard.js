@@ -4,7 +4,7 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { COLORS, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, SHADOWS, SPACING } from '../constants/theme';
 import { formatKSTTime } from '../utils/kstTimeUtils';
 
-const DriveStatusCard = ({ drive, onPress, isActive }) => {
+const DriveStatusCard = ({ drive, onPress }) => {
   // 시간 표시를 위한 헬퍼 함수
   const getTimeDisplay = (timeString) => {
     if (!timeString) return '시간 정보 없음';

@@ -169,21 +169,6 @@ const HomeScreen = ({ navigation }) => {
       case 'IN_PROGRESS':
         return { text: '운행 중', color: COLORS.success };
       case 'SCHEDULED':
-        const now = getNowKST();
-        const startTimeStr = schedule.startTime || schedule.departureTime?.split(' ').pop();
-
-        if (startTimeStr && schedule.operationDate) {
-          const startTime = createKSTDate(schedule.operationDate, startTimeStr);
-
-          // 출발 1시간 전부터 운행 대기 상태
-          const oneHourBefore = new Date(startTime.getTime() - 60 * 60 * 1000);
-
-          if (now >= oneHourBefore && now < startTime) {
-            return { text: '운행 대기', color: COLORS.warning };
-          } else if (now >= startTime) {
-            return { text: '출발 시간', color: COLORS.error };
-          }
-        }
         return { text: '운행 예정', color: COLORS.primary };
       default:
         return { text: '상태 미정', color: COLORS.grey };
