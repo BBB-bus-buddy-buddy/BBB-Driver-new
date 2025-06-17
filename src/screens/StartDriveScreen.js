@@ -56,7 +56,7 @@ const StartDriveScreen = ({ navigation, route }) => {
   const [locationPermissionGranted, setLocationPermissionGranted] = useState(false);
   const [noStartLocationInfo, setNoStartLocationInfo] = useState(false);
   const [noEndLocationInfo, setNoEndLocationInfo] = useState(false);
-  
+
   // 체크리스트 상태
   const [checklist, setChecklist] = useState({
     locationPermission: false,
@@ -65,7 +65,7 @@ const StartDriveScreen = ({ navigation, route }) => {
     websocketConnected: false,
     timeCheck: false,
   });
-  
+
   // 조기 출발 모달
   const [showEarlyStartModal, setShowEarlyStartModal] = useState(false);
   const [earlyStartMinutes, setEarlyStartMinutes] = useState(0);
@@ -121,7 +121,7 @@ const StartDriveScreen = ({ navigation, route }) => {
     const timeStr = drive.startTime || drive.departureTime?.split(' ').pop();
     if (timeStr && drive.operationDate) {
       const minutesFromNow = getMinutesFromNowKST(drive.operationDate, timeStr);
-      
+
       if (minutesFromNow <= 0) {
         // 이미 출발 시간이 지남
         setChecklist(prev => ({ ...prev, timeCheck: true }));
@@ -197,8 +197,22 @@ const StartDriveScreen = ({ navigation, route }) => {
       // 현재 위치 가져오기
       try {
         const location = await getCurrentLocation();
+        console.log('[StartDriveScreen] GPS 위치 수신 성공:', {
+          latitude: location.latitude,
+          longitude: location.longitude,
+          timestamp: location.timestamp,
+          정확도: location.accuracy || '알 수 없음'
+        });
+
         setCurrentLocation(location);
         setChecklist(prev => ({ ...prev, gpsEnabled: true }));
+
+        // 출발지 정보 로깅
+        console.log('[StartDriveScreen] 출발지 정보:', {
+          startLocation: drive.startLocation,
+          hasLatitude: drive.startLocation?.latitude !== undefined,
+          hasLongitude: drive.startLocation?.longitude !== undefined
+        });
 
         // 출발지 정보가 있으면 거리 계산
         if (drive.startLocation?.latitude && drive.startLocation?.longitude) {
@@ -208,9 +222,15 @@ const StartDriveScreen = ({ navigation, route }) => {
             drive.startLocation.latitude,
             drive.startLocation.longitude
           );
-          
+
+          console.log('[StartDriveScreen] 출발지까지 거리:', {
+            거리_미터: distance,
+            포맷된_거리: formatDistance(distance),
+            허용_반경: ARRIVAL_THRESHOLD_METERS
+          });
+
           setDistanceToStart(distance);
-          
+
           // 출발지 근처인지 확인
           if (distance <= ARRIVAL_THRESHOLD_METERS) {
             setLocationConfirmed(true);
@@ -222,7 +242,7 @@ const StartDriveScreen = ({ navigation, route }) => {
           }
         } else {
           // 출발지 정보가 없는 경우
-          console.log('[StartDriveScreen] 출발지 정보 없음');
+          console.log('[StartDriveScreen] 출발지 정보 없음 - 위치 확인 스킵');
           setLocationConfirmed(true);
           setChecklist(prev => ({ ...prev, nearStartLocation: true }));
           setLocationError(null);
@@ -246,15 +266,15 @@ const StartDriveScreen = ({ navigation, route }) => {
     const R = 6371000; // 지구 반지름 (미터)
     const dLat = toRad(lat2 - lat1);
     const dLon = toRad(lon2 - lon1);
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * 
-      Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   };
 
-  const toRad = (deg) => deg * (Math.PI/180);
+  const toRad = (deg) => deg * (Math.PI / 180);
 
   // 거리 포맷팅
   const formatDistance = (meters) => {
@@ -271,7 +291,7 @@ const StartDriveScreen = ({ navigation, route }) => {
 
       // 모든 체크리스트 확인
       const allChecked = Object.values(checklist).every(check => check === true);
-      
+
       if (!allChecked && !noStartLocationInfo) {
         Alert.alert(
           '운행 준비 확인',
@@ -286,7 +306,7 @@ const StartDriveScreen = ({ navigation, route }) => {
         const missingInfo = [];
         if (noStartLocationInfo) missingInfo.push('출발지');
         if (noEndLocationInfo) missingInfo.push('도착지');
-        
+
         Alert.alert(
           '위치 정보 확인',
           `${missingInfo.join('와 ')} 정보를 확인할 수 없습니다.\n그래도 운행을 시작하시겠습니까?`,
@@ -379,10 +399,10 @@ const StartDriveScreen = ({ navigation, route }) => {
   // 체크리스트 아이템 렌더링
   const renderChecklistItem = (title, checked, description) => (
     <View style={styles.checklistItem}>
-      <SimpleIcon 
-        name={checked ? 'check-circle' : 'radio-button-unchecked'} 
-        size={24} 
-        color={checked ? COLORS.success : COLORS.grey} 
+      <SimpleIcon
+        name={checked ? 'check-circle' : 'radio-button-unchecked'}
+        size={24}
+        color={checked ? COLORS.success : COLORS.grey}
       />
       <View style={styles.checklistTextContainer}>
         <Text style={[styles.checklistTitle, checked && styles.checklistTitleChecked]}>
@@ -396,7 +416,7 @@ const StartDriveScreen = ({ navigation, route }) => {
   );
 
   // 운행 시작 버튼 활성화 조건
-  const canStart = !checkingLocation && !loading && 
+  const canStart = !checkingLocation && !loading &&
     (Object.values(checklist).every(check => check === true) || noStartLocationInfo);
 
   return (
@@ -437,37 +457,37 @@ const StartDriveScreen = ({ navigation, route }) => {
           {/* 운행 준비 체크리스트 */}
           <View style={styles.checklistCard}>
             <Text style={styles.checklistHeader}>운행 준비 체크리스트</Text>
-            
+
             {renderChecklistItem(
               '위치 권한',
               checklist.locationPermission,
               checklist.locationPermission ? '허용됨' : '위치 권한이 필요합니다'
             )}
-            
+
             {renderChecklistItem(
               'GPS 상태',
               checklist.gpsEnabled,
               checklist.gpsEnabled ? '활성화됨' : 'GPS를 켜주세요'
             )}
-            
+
             {renderChecklistItem(
               '출발지 확인',
               checklist.nearStartLocation || noStartLocationInfo,
               noStartLocationInfo ? '출발지 정보 없음' :
-              checklist.nearStartLocation ? '출발지 도착' :
-              distanceToStart ? `${formatDistance(distanceToStart)} 남음` : '확인 중...'
+                checklist.nearStartLocation ? '출발지 도착' :
+                  distanceToStart ? `${formatDistance(distanceToStart)} 남음` : '확인 중...'
             )}
-            
+
             {renderChecklistItem(
               '실시간 통신',
               checklist.websocketConnected,
               checklist.websocketConnected ? '연결됨' : '연결 중...'
             )}
-            
+
             {renderChecklistItem(
               '출발 시간',
               checklist.timeCheck,
-              checklist.timeCheck ? 
+              checklist.timeCheck ?
                 (earlyStartMinutes > 0 ? `${earlyStartMinutes}분 후 출발` : '출발 가능') :
                 `${earlyStartMinutes}분 후 출발 가능`
             )}
