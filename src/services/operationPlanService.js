@@ -172,6 +172,13 @@ class OperationPlanService {
       return null;
     }
 
+    console.log('[OperationPlanService] 원본 schedule 데이터:', {
+      id: schedule.id,
+      operationId: schedule.operationId,
+      startLocation: schedule.startLocation,
+      endLocation: schedule.endLocation
+    });
+
     // 날짜 유효성 검증
     const operationDate = schedule.operationDate || null;
     const startTime = schedule.startTime || null;
@@ -222,7 +229,10 @@ class OperationPlanService {
       recurringWeeks: schedule.recurringWeeks || 0,
       organizationId: schedule.organizationId,
       createdAt: schedule.createdAt,
-      updatedAt: schedule.updatedAt
+      updatedAt: schedule.updatedAt,
+      // 위치 정보 추가 - 백엔드 LocationInfo 형식 그대로 전달
+      startLocation: schedule.startLocation || null,
+      endLocation: schedule.endLocation || null
     };
   }
 
