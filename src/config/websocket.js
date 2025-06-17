@@ -5,7 +5,8 @@ import { API_URL_LOCAL, API_URL_PROD } from '@env';
  * WebSocket URL 설정
  */
 export const getWebSocketUrl = () => {
-  const baseUrl = __DEV__ ? API_URL_LOCAL : API_URL_PROD;
+  // const baseUrl = __DEV__ ? API_URL_LOCAL : API_URL_PROD;
+  const baseUrl = API_URL_PROD;
 
   console.log('[WebSocket Config] 환경:', __DEV__ ? '개발' : '프로덕션');
   console.log('[WebSocket Config] Base URL:', baseUrl);

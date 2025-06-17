@@ -13,7 +13,8 @@ const getApiUrl = () => {
   console.log('[API Client] API_URL_LOCAL:', API_URL_LOCAL);
 
   // 프로덕션 환경에서는 항상 PROD URL 사용
-  const apiUrl = isDev ? API_URL_LOCAL : API_URL_PROD;
+  // const apiUrl = isDev ? API_URL_LOCAL : API_URL_PROD;
+  const apiUrl = API_URL_PROD;
 
   console.log('[API Client] 선택된 API URL:', apiUrl);
 
