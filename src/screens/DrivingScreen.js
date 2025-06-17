@@ -22,7 +22,25 @@ import DriveEndConfirmationModal from '../components/DriveEndConfirmationModal';
 import { debugLocationSwap } from '../utils/locationSwapHelper';
 
 const DrivingScreen = ({ navigation, route }) => {
-  const { drive } = route.params;
+  console.log('[DrivingScreen] route.params:', route?.params);
+  const { drive } = route.params || {};
+
+  // drive 객체가 없으면 에러 처리
+  if (!drive) {
+    console.error('[DrivingScreen] drive 파라미터가 없습니다');
+    Alert.alert(
+      '오류',
+      '운행 정보를 찾을 수 없습니다.',
+      [{ text: '확인', onPress: () => navigation.goBack() }]
+    );
+    return null;
+  }
+
+  console.log('[DrivingScreen] drive 정보:', {
+    id: drive.id,
+    busNumber: drive.busNumber,
+    status: drive.status
+  });
 
   // 상태 관리
   const [currentTime, setCurrentTime] = useState(getNowKST());

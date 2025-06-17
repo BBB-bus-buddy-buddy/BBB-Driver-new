@@ -11,6 +11,7 @@ export class DriveService {
       // 현재 위치 가져오기
       const location = await this._getCurrentLocation();
       
+      // driveAPI가 내부적으로 좌표 변환을 처리함
       const response = await driveAPI.startDrive({
         operationId,
         isEarlyStart,
@@ -38,6 +39,7 @@ export class DriveService {
       // 현재 위치 가져오기
       const location = await this._getCurrentLocation();
 
+      // driveAPI가 내부적으로 좌표 변환을 처리함
       const response = await driveAPI.endDrive({
         operationId,
         currentLocation: location,
@@ -65,6 +67,7 @@ export class DriveService {
    */
   static async updateLocation(operationId, busNumber, location) {
     try {
+      // driveAPI가 내부적으로 좌표 변환을 처리함
       const response = await driveAPI.updateLocation({
         operationId,
         busNumber,

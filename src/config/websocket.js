@@ -6,15 +6,15 @@ import { API_URL_LOCAL, API_URL_PROD } from '@env';
  */
 export const getWebSocketUrl = () => {
   const baseUrl = __DEV__ ? API_URL_LOCAL : API_URL_PROD;
-  
+
   console.log('[WebSocket Config] 환경:', __DEV__ ? '개발' : '프로덕션');
   console.log('[WebSocket Config] Base URL:', baseUrl);
-  
+
   // HTTP를 WS로, HTTPS를 WSS로 변환
   const wsUrl = baseUrl
     .replace('https://', 'wss://')
     .replace('http://', 'ws://');
-  
+
   return {
     driver: `${wsUrl}/ws/driver`,
   };
@@ -32,14 +32,14 @@ export const WS_CONFIG = {
     backoffMultiplier: 1.5,
     maxDelay: 30000
   },
-  
+
   // 하트비트 설정
   heartbeat: {
     enabled: true,
     interval: 30000, // 30초
     timeout: 60000   // 60초 (응답 대기 시간)
   },
-  
+
   // 위치 업데이트 설정
   locationUpdate: {
     interval: 5000,  // 5초
@@ -48,7 +48,7 @@ export const WS_CONFIG = {
     // 정류장 근처 감지 반경
     stationRadius: 50, // 50미터
   },
-  
+
   // 메시지 큐 설정
   messageQueue: {
     maxSize: 100,    // 최대 큐 크기
@@ -64,32 +64,32 @@ export const WS_MESSAGE_TYPES = {
   CONNECTION_ESTABLISHED: 'connection_established',
   HEARTBEAT: 'heartbeat',
   HEARTBEAT_RESPONSE: 'heartbeat_response',
-  
+
   // 위치 관련
   LOCATION_UPDATE: 'location_update',
-  
+
   // 버스 상태 관련
   BUS_STATUS_UPDATE: 'bus_status_update',
   BUS_UPDATE: 'busUpdate',
-  
+
   // 정류장 관련
   STATION_UPDATE: 'stationUpdate',
   STATION_ARRIVAL: 'stationArrival',
   STATION_DEPARTURE: 'stationDeparture',
-  
+
   // 승객 관련
   PASSENGER_BOARDING: 'passengerBoarding',
   BOARDING: 'boarding',
-  
+
   // 운행 관련
   DRIVE_STATUS_UPDATE: 'driveStatusUpdate',
   DRIVE_START: 'driveStart',
   DRIVE_END: 'driveEnd',
-  
+
   // 알림
   NOTIFICATION: 'notification',
   EMERGENCY: 'emergency',
-  
+
   // 일반 응답
   SUCCESS: 'success',
   ERROR: 'error'

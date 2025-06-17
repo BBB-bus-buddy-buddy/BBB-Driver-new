@@ -353,7 +353,9 @@ const StartDriveScreen = ({ navigation, route }) => {
 
   const startDriveRequest = async (requestData) => {
     try {
+      console.log('[StartDriveScreen] 운행 시작 API 호출:', requestData);
       const response = await driveAPI.startDrive(requestData);
+      console.log('[StartDriveScreen] API 응답:', response.data);
 
       if (response.data.success) {
         const driveData = response.data.data;
@@ -366,15 +368,38 @@ const StartDriveScreen = ({ navigation, route }) => {
           organizationId: drive.organizationId || (await storage.getUserInfo())?.organizationId
         };
 
+        console.log('[StartDriveScreen] 저장할 운행 정보:', currentDriveInfo);
         await storage.setCurrentDrive(currentDriveInfo);
 
-        navigation.replace('Driving', {
-          drive: currentDriveInfo
+        console.log('[StartDriveScreen] DrivingScreen으로 이동 시도');
+
+        // 로딩 상태 해제
+        setLoading(false);
+
+        // navigation.reset을 사용하여 스택을 완전히 재설정
+        navigation.reset({
+          index: 0,
+          routes: [
+            { name: 'Home' },
+            { name: 'Driving', params: { drive: currentDriveInfo } }
+          ],
         });
+
+        // 백업 방법: navigate 사용
+        // navigation.navigate('Driving', {
+        //   drive: currentDriveInfo
+        // });
+
+        // 디버깅용 로그
+        setTimeout(() => {
+          console.log('[StartDriveScreen] navigation stack:', navigation.getState());
+        }, 1000);
       } else {
+        setLoading(false);
         throw new Error(response.data.message || '운행 시작에 실패했습니다.');
       }
     } catch (error) {
+      console.error('[StartDriveScreen] 운행 시작 오류:', error);
       setLoading(false);
 
       if (error.response?.data?.message) {

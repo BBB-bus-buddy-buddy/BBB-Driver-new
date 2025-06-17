@@ -1,6 +1,6 @@
 // src/api/drive.js
 import apiClient from './client';
-import { swapScheduleLocations } from '../utils/locationSwapHelper';
+import { swapScheduleLocations, swapLocationForBackend } from '../utils/locationSwapHelper';
 
 export const driveAPI = {
   /**
@@ -16,8 +16,14 @@ export const driveAPI = {
    * @returns {Promise} Response: ApiResponse<DriveStatusDTO>
    */
   startDrive: (data) => {
-    return apiClient.post('/api/drives/start', data).then(response => {
-      // 위치 정보가 있으면 변환
+    // 위치 정보가 있으면 백엔드 형식으로 변환
+    const requestData = { ...data };
+    if (data.currentLocation) {
+      requestData.currentLocation = swapLocationForBackend(data.currentLocation);
+    }
+
+    return apiClient.post('/api/drives/start', requestData).then(response => {
+      // 응답의 위치 정보가 있으면 프론트 형식으로 변환
       if (response.data?.data) {
         response.data.data = swapScheduleLocations(response.data.data);
       }
@@ -38,8 +44,14 @@ export const driveAPI = {
    * @returns {Promise} Response: ApiResponse<DriveStatusDTO>
    */
   endDrive: (data) => {
-    return apiClient.post('/api/drives/end', data).then(response => {
-      // 위치 정보가 있으면 변환
+    // 위치 정보가 있으면 백엔드 형식으로 변환
+    const requestData = { ...data };
+    if (data.currentLocation) {
+      requestData.currentLocation = swapLocationForBackend(data.currentLocation);
+    }
+
+    return apiClient.post('/api/drives/end', requestData).then(response => {
+      // 응답의 위치 정보가 있으면 프론트 형식으로 변환
       if (response.data?.data) {
         response.data.data = swapScheduleLocations(response.data.data);
       }
@@ -57,7 +69,7 @@ export const driveAPI = {
    */
   getNextDrive: (params) => {
     return apiClient.get('/api/drives/next', { params }).then(response => {
-      // 위치 정보가 있으면 변환
+      // 응답의 위치 정보가 있으면 프론트 형식으로 변환
       if (response.data?.data) {
         response.data.data = swapScheduleLocations(response.data.data);
       }
@@ -81,7 +93,13 @@ export const driveAPI = {
    * @returns {Promise} Response: ApiResponse<Map<String, Object>>
    */
   updateLocation: (data) => {
-    return apiClient.post('/api/drives/location', data);
+    // 위치 정보를 백엔드 형식으로 변환
+    const requestData = { ...data };
+    if (data.location) {
+      requestData.location = swapLocationForBackend(data.location);
+    }
+
+    return apiClient.post('/api/drives/location', requestData);
   },
 
   /**
@@ -92,7 +110,7 @@ export const driveAPI = {
    */
   getDriveStatus: (operationId) => {
     return apiClient.get(`/api/drives/status/${operationId}`).then(response => {
-      // 위치 정보가 있으면 변환
+      // 응답의 위치 정보가 있으면 프론트 형식으로 변환
       if (response.data?.data) {
         response.data.data = swapScheduleLocations(response.data.data);
       }

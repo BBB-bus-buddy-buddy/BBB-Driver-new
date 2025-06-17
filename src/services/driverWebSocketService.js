@@ -1,7 +1,8 @@
-// src/services/webSocketService.js
+// src/services/driverWebSocketService.js
 import { storage } from '../utils/storage';
 import { AppState } from 'react-native';
 import { getWebSocketUrl, WS_CONFIG, WS_MESSAGE_TYPES, WS_READY_STATE } from '../config/websocket';
+import { swapLocationForBackend } from '../utils/locationSwapHelper';
 
 class DriverWebSocketService {
   constructor() {
@@ -159,12 +160,18 @@ class DriverWebSocketService {
       return;
     }
 
+    // 백엔드 형식으로 위치 변환
+    const backendLocation = swapLocationForBackend({
+      latitude: location.latitude,
+      longitude: location.longitude
+    });
+
     const locationMessage = {
       type: WS_MESSAGE_TYPES.LOCATION_UPDATE,
       busNumber: this.busNumber,
       organizationId: this.organizationId,
-      latitude: location.latitude,
-      longitude: location.longitude,
+      latitude: backendLocation.latitude,
+      longitude: backendLocation.longitude,
       occupiedSeats: occupiedSeats,
       timestamp: Date.now()
     };
@@ -383,13 +390,19 @@ class DriverWebSocketService {
    * 긴급 메시지 전송
    */
   sendEmergencyMessage(emergencyType, details) {
+    // 현재 위치가 있으면 백엔드 형식으로 변환
+    let emergencyLocation = null;
+    if (this.currentLocation) {
+      emergencyLocation = swapLocationForBackend(this.currentLocation);
+    }
+
     const emergencyMessage = {
       type: 'emergency',
       busNumber: this.busNumber,
       organizationId: this.organizationId,
       emergencyType: emergencyType,
       details: details,
-      location: this.currentLocation,
+      location: emergencyLocation,
       timestamp: Date.now()
     };
 

@@ -4,6 +4,7 @@ import { View, Text, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { ValidationService, AuthService } from '../../services';
 import { storage } from '../../utils/storage';
+import { swapLocationForBackend } from '../../utils/locationSwapHelper';
 
 import PersonalInfoStep from './step/PersonalInfoStep';
 import LicenseInfoStep from './step/LicenseInfoStep';
@@ -272,8 +273,19 @@ const AdditionalInfoBeta = () => {
 
         setLoading(true);
         try {
+            // 위치 정보가 있으면 백엔드 형식으로 변환
+            const submitData = { ...driverInfo };
+            if (driverInfo.latitude !== null && driverInfo.longitude !== null) {
+                const backendLocation = swapLocationForBackend({
+                    latitude: driverInfo.latitude,
+                    longitude: driverInfo.longitude
+                });
+                submitData.latitude = backendLocation.latitude;
+                submitData.longitude = backendLocation.longitude;
+            }
+
             // ValidationService.upgradeToDriver 사용
-            const response = await ValidationService.upgradeToDriver(driverInfo);
+            const response = await ValidationService.upgradeToDriver(submitData);
 
             if (response.success) {
                 // 성공 시 storage에 사용자 정보 저장

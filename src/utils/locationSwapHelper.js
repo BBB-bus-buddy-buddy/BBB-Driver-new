@@ -44,6 +44,39 @@ export const swapLocationCoordinates = (location) => {
   };
   
   /**
+   * API로 전송하기 위해 위치 좌표를 다시 바꿔줍니다
+   * @param {Object} location - 프론트엔드에서 사용 중인 위치 객체
+   * @returns {Object|null} 백엔드 형식으로 변환된 위치 객체
+   */
+  export const swapLocationForBackend = (location) => {
+    if (!location) return null;
+    
+    // location 객체가 없거나 위도/경도가 없으면 그대로 반환
+    if (!location.latitude && !location.longitude) {
+      return location;
+    }
+  
+    console.log('[LocationSwap] 백엔드 전송용 좌표 변환 전:', {
+      latitude: location.latitude,
+      longitude: location.longitude
+    });
+  
+    // 백엔드가 기대하는 형식으로 다시 swap
+    const backendLocation = {
+      ...location,
+      latitude: location.longitude,  // 프론트의 longitude를 백엔드의 latitude로
+      longitude: location.latitude   // 프론트의 latitude를 백엔드의 longitude로
+    };
+  
+    console.log('[LocationSwap] 백엔드 전송용 좌표 변환 후:', {
+      latitude: backendLocation.latitude,
+      longitude: backendLocation.longitude
+    });
+  
+    return backendLocation;
+  };
+  
+  /**
    * 운행 일정 데이터의 모든 위치 정보를 변환합니다
    * @param {Object} schedule - 운행 일정 객체
    * @returns {Object} 위치 정보가 변환된 운행 일정
