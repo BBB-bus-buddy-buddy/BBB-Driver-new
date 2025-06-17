@@ -78,31 +78,6 @@ export const driveAPI = {
   },
 
   /**
-   * 운행 중 위치 업데이트
-   * POST /api/drives/location
-   * @param {Object} data - DriveLocationUpdateDTO
-   * @param {string} data.operationId - 운행 일정 ID
-   * @param {string} data.busNumber - 버스 번호
-   * @param {Object} data.location - 위치 정보
-   * @param {number} data.location.latitude - 위도
-   * @param {number} data.location.longitude - 경도
-   * @param {number} data.location.timestamp - 타임스탬프
-   * @param {number} data.speed - 속도 (m/s) - 선택
-   * @param {number} data.heading - 방향 (도) - 선택
-   * @param {number} data.accuracy - 정확도 (미터) - 선택
-   * @returns {Promise} Response: ApiResponse<Map<String, Object>>
-   */
-  updateLocation: (data) => {
-    // 위치 정보를 백엔드 형식으로 변환
-    const requestData = { ...data };
-    if (data.location) {
-      requestData.location = swapLocationForBackend(data.location);
-    }
-
-    return apiClient.post('/api/drives/location', requestData);
-  },
-
-  /**
    * 운행 상태 조회
    * GET /api/drives/status/{operationId}
    * @param {string} operationId - 운행 일정 ID

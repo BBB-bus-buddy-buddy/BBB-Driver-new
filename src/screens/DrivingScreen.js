@@ -83,7 +83,6 @@ const DrivingScreen = ({ navigation, route }) => {
   const pulseAnimation = useRef(new Animated.Value(1)).current;
 
   const appState = useRef(AppState.currentState);
-  const locationUpdateInterval = useRef(null);
   const speedHistory = useRef([]);
 
   // 펄스 애니메이션 (운행 중 표시)
@@ -127,8 +126,6 @@ const DrivingScreen = ({ navigation, route }) => {
 
   // WebSocket 연결 및 위치 추적
   useEffect(() => {
-    let currentLocation = null;
-
     const initializeWebSocket = async () => {
       try {
         if (driverWebSocketService.checkConnection()) {
@@ -177,7 +174,6 @@ const DrivingScreen = ({ navigation, route }) => {
         timestamp: new Date(location.timestamp).toLocaleTimeString()
       });
 
-      currentLocation = location;
       setCurrentLocationInfo(location);
 
       // 속도 정보 업데이트
@@ -200,9 +196,12 @@ const DrivingScreen = ({ navigation, route }) => {
         }));
       }
 
-      // WebSocket으로 위치 전송
+      // WebSocket으로 위치 전송 (브로드캐스트)
       if (driverWebSocketService.checkConnection()) {
+        // 현재 위치 업데이트
         driverWebSocketService.updateCurrentLocation(location);
+        
+        // 위치와 좌석 정보 전송
         driverWebSocketService.sendLocationUpdate(location, drivingInfo.occupiedSeats);
       }
 
@@ -238,13 +237,6 @@ const DrivingScreen = ({ navigation, route }) => {
 
     setLocationTrackingId(watchId);
 
-    // 5초마다 서버 API로 위치 업데이트 (백업)
-    locationUpdateInterval.current = setInterval(async () => {
-      if (currentLocation) {
-        await sendLocationUpdate(currentLocation);
-      }
-    }, 5000);
-
     // WebSocket 초기화
     initializeWebSocket();
 
@@ -261,9 +253,6 @@ const DrivingScreen = ({ navigation, route }) => {
       // 위치 추적 중지
       if (locationTrackingId) {
         stopLocationTracking(locationTrackingId);
-      }
-      if (locationUpdateInterval.current) {
-        clearInterval(locationUpdateInterval.current);
       }
       appStateSubscription.remove();
     };
@@ -365,48 +354,6 @@ const DrivingScreen = ({ navigation, route }) => {
       }
     }
     appState.current = nextAppState;
-  };
-
-  // 위치 업데이트 전송 (REST API 백업)
-  const sendLocationUpdate = async (location) => {
-    try {
-      const requestData = {
-        operationId: drive.operationId || drive.id,
-        busNumber: drive.busNumber || drive.busRealNumber,
-        location: {
-          latitude: location.latitude,
-          longitude: location.longitude,
-          timestamp: Date.now()
-        },
-        speed: location.speed || 0,
-        heading: location.heading || 0,
-        accuracy: location.accuracy || 0
-      };
-
-      const response = await driveAPI.updateLocation(requestData);
-
-      if (response.data.success && response.data.data) {
-        const updateData = response.data.data;
-
-        // 다음 정류장 정보 업데이트
-        if (updateData.nextStop) {
-          setStationInfo(prev => ({
-            ...prev,
-            nextStation: updateData.nextStop,
-          }));
-        }
-
-        // 목적지 근접 여부 업데이트
-        if (updateData.isNearDestination !== undefined) {
-          setDestinationInfo(prev => ({
-            ...prev,
-            isNear: updateData.isNearDestination,
-          }));
-        }
-      }
-    } catch (error) {
-      console.error('[DrivingScreen] 위치 업데이트 전송 실패:', error);
-    }
   };
 
   // 거리 계산 함수 (km)
@@ -513,11 +460,6 @@ const DrivingScreen = ({ navigation, route }) => {
       // 위치 추적 중지
       if (locationTrackingId) {
         stopLocationTracking(locationTrackingId);
-      }
-
-      // 위치 업데이트 인터벌 중지
-      if (locationUpdateInterval.current) {
-        clearInterval(locationUpdateInterval.current);
       }
 
       // 현재 위치 가져오기 (선택적)

@@ -10,7 +10,7 @@ export class DriveService {
     try {
       // 현재 위치 가져오기
       const location = await this._getCurrentLocation();
-      
+
       // driveAPI가 내부적으로 좌표 변환을 처리함
       const response = await driveAPI.startDrive({
         operationId,
@@ -51,7 +51,7 @@ export class DriveService {
         await storage.setCompletedDrive(response.data.data);
         // 현재 운행 정보 삭제
         await storage.removeCurrentDrive();
-        
+
         return response.data.data;
       }
 
@@ -59,33 +59,6 @@ export class DriveService {
     } catch (error) {
       console.error('[DriveService] 운행 종료 오류:', error);
       throw new Error(error.response?.data?.message || error.message || '운행을 종료할 수 없습니다.');
-    }
-  }
-
-  /**
-   * 위치 업데이트
-   */
-  static async updateLocation(operationId, busNumber, location) {
-    try {
-      // driveAPI가 내부적으로 좌표 변환을 처리함
-      const response = await driveAPI.updateLocation({
-        operationId,
-        busNumber,
-        location: {
-          latitude: location.latitude,
-          longitude: location.longitude,
-          timestamp: location.timestamp || Date.now()
-        },
-        speed: location.speed || 0,
-        heading: location.heading || 0,
-        accuracy: location.accuracy || 0
-      });
-
-      return response.data?.data;
-    } catch (error) {
-      console.error('[DriveService] 위치 업데이트 오류:', error);
-      // 위치 업데이트 실패는 조용히 처리 (운행 중단하지 않음)
-      return null;
     }
   }
 
