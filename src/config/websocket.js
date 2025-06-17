@@ -41,7 +41,9 @@ export const WS_CONFIG = {
   locationUpdate: {
     interval: 5000,  // 5초
     minDistance: 5,  // 최소 이동 거리 (미터)
-    highAccuracy: true
+    highAccuracy: true,
+    // 정류장 근처 감지 반경
+    stationRadius: 50, // 50미터
   },
   
   // 메시지 큐 설정
@@ -67,9 +69,23 @@ export const WS_MESSAGE_TYPES = {
   BUS_STATUS_UPDATE: 'bus_status_update',
   BUS_UPDATE: 'busUpdate',
   
+  // 정류장 관련
+  STATION_UPDATE: 'stationUpdate',
+  STATION_ARRIVAL: 'stationArrival',
+  STATION_DEPARTURE: 'stationDeparture',
+  
   // 승객 관련
   PASSENGER_BOARDING: 'passengerBoarding',
   BOARDING: 'boarding',
+  
+  // 운행 관련
+  DRIVE_STATUS_UPDATE: 'driveStatusUpdate',
+  DRIVE_START: 'driveStart',
+  DRIVE_END: 'driveEnd',
+  
+  // 알림
+  NOTIFICATION: 'notification',
+  EMERGENCY: 'emergency',
   
   // 일반 응답
   SUCCESS: 'success',
@@ -105,4 +121,35 @@ export const WS_READY_STATE = {
   OPEN: 1,
   CLOSING: 2,
   CLOSED: 3
+};
+
+/**
+ * 운행 상태 코드
+ */
+export const DRIVE_STATUS = {
+  SCHEDULED: 'SCHEDULED',
+  IN_PROGRESS: 'IN_PROGRESS',
+  COMPLETED: 'COMPLETED',
+  CANCELLED: 'CANCELLED'
+};
+
+/**
+ * 정류장 이벤트 타입
+ */
+export const STATION_EVENT_TYPES = {
+  APPROACHING: 'approaching',    // 접근 중
+  ARRIVED: 'arrived',            // 도착
+  DEPARTED: 'departed',          // 출발
+  PASSED: 'passed'               // 통과
+};
+
+/**
+ * 알림 타입
+ */
+export const NOTIFICATION_TYPES = {
+  INFO: 'info',
+  WARNING: 'warning',
+  ERROR: 'error',
+  SUCCESS: 'success',
+  EMERGENCY: 'emergency'
 };
