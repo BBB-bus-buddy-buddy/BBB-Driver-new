@@ -17,15 +17,38 @@ export class AuthService {
         throw new Error('유효하지 않은 토큰입니다.');
       }
 
-      // 토큰 저장
+      // 토큰 저장 - 에러 처리 강화
       console.log('[AuthService] 토큰 저장 중...');
-      const tokenSaved = await storage.setToken(token);
+      let tokenSaved = false;
+      let storageError = null;
       
-      if (!tokenSaved) {
-        throw new Error('토큰 저장에 실패했습니다.');
+      try {
+        tokenSaved = await storage.setToken(token);
+      } catch (error) {
+        console.error('[AuthService] 토큰 저장 오류:', error);
+        storageError = error;
+        
+        // manifest.json 에러인 경우 앱 재시작 권장
+        if (error.message?.includes('manifest.json')) {
+          // 스토리지 복구 시도
+          const repairResult = await storageHelpers.repairStorage();
+          if (repairResult) {
+            console.log('[AuthService] 스토리지 복구 성공, 토큰 저장 재시도');
+            try {
+              tokenSaved = await storage.setToken(token);
+            } catch (retryError) {
+              console.error('[AuthService] 토큰 저장 재시도 실패:', retryError);
+            }
+          }
+        }
       }
       
-      console.log('[AuthService] 토큰 저장 완료');
+      // 토큰은 저장되었거나 메모리에 있으므로 계속 진행
+      if (!tokenSaved && !storageError?.message?.includes('메모리 폴백')) {
+        console.warn('[AuthService] 토큰 저장 실패했지만 계속 진행');
+      }
+      
+      console.log('[AuthService] 토큰 저장 완료 또는 메모리 폴백 사용');
 
       // 사용자 정보 가져오기
       console.log('[AuthService] 사용자 정보 조회 중...');
@@ -53,16 +76,28 @@ export class AuthService {
         name: userInfo.name || 'Unknown'
       });
 
-      // 사용자 정보 저장
+      // 사용자 정보 저장 - 에러 처리 강화
       console.log('[AuthService] 사용자 정보 저장 중...');
-      const userInfoSaved = await storage.setUserInfo(userInfo);
+      let userInfoSaved = false;
       
-      if (!userInfoSaved) {
-        throw new Error('사용자 정보 저장에 실패했습니다.');
+      try {
+        userInfoSaved = await storage.setUserInfo(userInfo);
+      } catch (error) {
+        console.error('[AuthService] 사용자 정보 저장 오류:', error);
+        
+        // 스토리지 오류가 발생해도 로그인은 성공으로 처리
+        if (error.message?.includes('메모리 폴백')) {
+          console.log('[AuthService] 사용자 정보 메모리 폴백 사용');
+          userInfoSaved = true;
+        }
       }
 
-      // 동기화 시간 기록
-      await storage.setLastSync(new Date().toISOString());
+      // 동기화 시간 기록 (실패해도 무시)
+      try {
+        await storage.setLastSync(new Date().toISOString());
+      } catch (error) {
+        console.warn('[AuthService] 동기화 시간 기록 실패:', error);
+      }
 
       console.log('[AuthService] 로그인 완료');
 
@@ -70,13 +105,15 @@ export class AuthService {
         success: true,
         userInfo,
         role: userInfo.role,
-        needsAdditionalInfo: userInfo.role === 'ROLE_GUEST'
+        needsAdditionalInfo: userInfo.role === 'ROLE_GUEST',
+        storageWarning: !tokenSaved || !userInfoSaved ? 
+          '일부 정보가 임시 저장되었습니다. 앱을 재시작하면 다시 로그인이 필요할 수 있습니다.' : null
       };
 
     } catch (error) {
       console.error('[AuthService] 로그인 오류:', error);
 
-      // 로그인 실패 시 토큰 삭제
+      // 로그인 실패 시 토큰 삭제 시도 (실패해도 무시)
       try {
         await storage.removeToken();
       } catch (removeError) {
@@ -162,17 +199,31 @@ export class AuthService {
 
       if (hasChanges) {
         console.log('[AuthService] 사용자 정보 변경 감지됨. 업데이트 중...');
-        await storage.setUserInfo(serverUserInfo);
+        
+        try {
+          await storage.setUserInfo(serverUserInfo);
+        } catch (error) {
+          console.error('[AuthService] 사용자 정보 업데이트 실패:', error);
+          // 스토리지 오류가 발생해도 동기화는 성공으로 처리
+        }
 
         // 역할 변경 시 추가 정보 플래그 초기화
         if (localUserInfo && localUserInfo.role !== serverUserInfo.role) {
           console.log('[AuthService] 역할 변경 감지:', localUserInfo.role, '->', serverUserInfo.role);
-          await storage.setHasAdditionalInfo(false);
+          try {
+            await storage.setHasAdditionalInfo(false);
+          } catch (error) {
+            console.warn('[AuthService] 추가 정보 플래그 초기화 실패:', error);
+          }
         }
       }
 
-      // 동기화 시간 기록
-      await storage.setLastSync(new Date().toISOString());
+      // 동기화 시간 기록 (실패해도 무시)
+      try {
+        await storage.setLastSync(new Date().toISOString());
+      } catch (error) {
+        console.warn('[AuthService] 동기화 시간 기록 실패:', error);
+      }
 
       return {
         success: true,
@@ -282,21 +333,36 @@ export class AuthService {
    * 현재 사용자 정보 가져오기
    */
   static async getCurrentUser() {
-    return await storage.getUserInfo();
+    try {
+      return await storage.getUserInfo();
+    } catch (error) {
+      console.error('[AuthService] 사용자 정보 조회 오류:', error);
+      return null;
+    }
   }
 
   /**
    * 마지막 동기화 시간 확인
    */
   static async getLastSyncTime() {
-    return await storage.getLastSync();
+    try {
+      return await storage.getLastSync();
+    } catch (error) {
+      console.error('[AuthService] 동기화 시간 조회 오류:', error);
+      return null;
+    }
   }
 
   /**
    * 동기화가 필요한지 확인
    */
   static async needsSync() {
-    return await storageHelpers.needsSync();
+    try {
+      return await storageHelpers.needsSync();
+    } catch (error) {
+      console.error('[AuthService] 동기화 필요 여부 확인 오류:', error);
+      return true; // 오류 시 동기화 필요로 간주
+    }
   }
 
   /**
@@ -310,7 +376,12 @@ export class AuthService {
         // 로컬 정보도 업데이트
         const currentUser = await this.getCurrentUser();
         const updatedUser = { ...currentUser, ...response.data.data };
-        await storage.setUserInfo(updatedUser);
+        
+        try {
+          await storage.setUserInfo(updatedUser);
+        } catch (error) {
+          console.error('[AuthService] 프로필 로컬 저장 실패:', error);
+        }
 
         return {
           success: true,
@@ -350,7 +421,11 @@ export class AuthService {
         };
 
         // 로컬 저장소 업데이트
-        await storage.setUserInfo(updatedUser);
+        try {
+          await storage.setUserInfo(updatedUser);
+        } catch (error) {
+          console.error('[AuthService] 면허 정보 로컬 저장 실패:', error);
+        }
 
         return {
           success: true,
@@ -376,18 +451,33 @@ export class AuthService {
    * 로그인 상태 확인
    */
   static async isLoggedIn() {
-    return await storageHelpers.isLoggedIn();
+    try {
+      return await storageHelpers.isLoggedIn();
+    } catch (error) {
+      console.error('[AuthService] 로그인 상태 확인 오류:', error);
+      return false;
+    }
   }
 
   /**
    * 토큰 관련 헬퍼 메서드들
    */
   static async getToken() {
-    return await storage.getToken();
+    try {
+      return await storage.getToken();
+    } catch (error) {
+      console.error('[AuthService] 토큰 조회 오류:', error);
+      return null;
+    }
   }
 
   static async setToken(token) {
-    return await storage.setToken(token);
+    try {
+      return await storage.setToken(token);
+    } catch (error) {
+      console.error('[AuthService] 토큰 저장 오류:', error);
+      return false;
+    }
   }
 
   /**

@@ -14,6 +14,7 @@ export class StorageManager {
   constructor() {
     this.isInitialized = false;
     this.isInitializing = false; // 초기화 진행 중 플래그 추가
+    this._memoryFallback = {}; // 메모리 폴백 저장소
   }
 
   /**
@@ -134,12 +135,34 @@ export class StorageManager {
       } catch (error) {
         console.error(`[Storage] 저장 실패 (시도 ${i + 1}/${retries}):`, key, error.message);
         
-        if (error.message?.includes('manifest.json') && i < retries - 1) {
-          await new Promise(resolve => setTimeout(resolve, 100 * (i + 1)));
-          continue;
+        // manifest.json 에러 처리
+        if (error.message?.includes('manifest.json') || error.message?.includes('doesn\'t exist')) {
+          console.log('[Storage] manifest.json 에러 감지, 재시도 중...');
+          
+          // AsyncStorage 초기화 재시도
+          try {
+            // 약간의 지연 후 재시도
+            await new Promise(resolve => setTimeout(resolve, 200 * (i + 1)));
+            
+            // 마지막 시도가 아니면 계속
+            if (i < retries - 1) {
+              continue;
+            }
+          } catch (retryError) {
+            console.error('[Storage] 재시도 실패:', retryError);
+          }
         }
         
+        // 마지막 시도에서 실패하면 폴백 처리
         if (i === retries - 1) {
+          console.warn(`[Storage] 모든 시도 실패, 폴백 처리: ${key}`);
+          // 중요한 데이터는 메모리에 임시 저장
+          if (criticalKeys.includes(key)) {
+            this._memoryFallback = this._memoryFallback || {};
+            this._memoryFallback[key] = value;
+            console.log(`[Storage] 메모리 폴백 사용: ${key}`);
+            return true;
+          }
           throw error;
         }
       }
@@ -164,6 +187,13 @@ export class StorageManager {
       return value;
     } catch (error) {
       console.error(`[Storage] 조회 실패: ${key}`, error);
+      
+      // 메모리 폴백 확인
+      if (this._memoryFallback && this._memoryFallback[key]) {
+        console.log(`[Storage] 메모리 폴백에서 조회: ${key}`);
+        return this._memoryFallback[key];
+      }
+      
       return null;
     }
   }
@@ -176,9 +206,22 @@ export class StorageManager {
     try {
       await AsyncStorage.removeItem(key);
       console.log(`[Storage] 삭제 성공: ${key}`);
+      
+      // 메모리 폴백에서도 삭제
+      if (this._memoryFallback && this._memoryFallback[key]) {
+        delete this._memoryFallback[key];
+        console.log(`[Storage] 메모리 폴백에서도 삭제: ${key}`);
+      }
+      
       return true;
     } catch (error) {
       console.error(`[Storage] 삭제 실패: ${key}`, error);
+      
+      // 에러가 발생해도 메모리 폴백에서는 삭제 시도
+      if (this._memoryFallback && this._memoryFallback[key]) {
+        delete this._memoryFallback[key];
+      }
+      
       return false;
     }
   }
@@ -303,6 +346,10 @@ export class StorageManager {
     // 각각 개별적으로 삭제 (multiRemove 대신)
     for (const key of userKeys) {
       await this._safeRemoveItem(key);
+      // 메모리 폴백에서도 삭제
+      if (this._memoryFallback && this._memoryFallback[key]) {
+        delete this._memoryFallback[key];
+      }
     }
     
     console.log('[Storage] 사용자 데이터 삭제 완료');
@@ -315,6 +362,7 @@ export class StorageManager {
       await AsyncStorage.clear();
       this.isInitialized = false;
       this.isInitializing = false;
+      this._memoryFallback = {}; // 메모리 폴백 초기화
       console.log('[Storage] 전체 데이터 삭제 완료');
       
       // 재초기화

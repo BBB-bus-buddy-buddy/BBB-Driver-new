@@ -70,14 +70,21 @@ const LoginScreen = () => {
 
         if (loginResult.success) {
           console.log('[LoginScreen] 로그인 성공:', loginResult.userInfo.email);
-
-          // 역할에 따른 화면 이동
-          if (loginResult.needsAdditionalInfo) {
-            console.log('[LoginScreen] 게스트 유저, 추가 정보 화면으로 이동');
-            navigation.navigate('AdditionalInfo');
+          
+          // 스토리지 경고가 있는 경우 사용자에게 알림
+          if (loginResult.storageWarning) {
+            Alert.alert(
+              '임시 저장',
+              loginResult.storageWarning,
+              [
+                {
+                  text: '확인',
+                  onPress: () => navigateAfterLogin(loginResult)
+                }
+              ]
+            );
           } else {
-            console.log('[LoginScreen] 일반 유저, 홈 화면으로 이동');
-            navigation.navigate('Home');
+            navigateAfterLogin(loginResult);
           }
         } else {
           throw new Error(loginResult.message || '로그인 처리에 실패했습니다.');
@@ -91,12 +98,35 @@ const LoginScreen = () => {
 
       if (error.message === '인증이 취소되었거나 실패했습니다.') {
         console.log('[LoginScreen] 로그인 취소됨');
+      } else if (error.message?.includes('manifest.json')) {
+        // manifest.json 에러인 경우 특별 처리
+        Alert.alert(
+          '저장소 오류',
+          '데이터 저장소에 문제가 발생했습니다. 앱을 재시작해주세요.\n\n문제가 계속되면 시뮬레이터를 리셋하거나 앱을 재설치해주세요.',
+          [
+            {
+              text: '확인',
+              style: 'default',
+            }
+          ]
+        );
       } else {
         Alert.alert('로그인 실패', error.message || '로그인 처리 중 오류가 발생했습니다.');
       }
     } finally {
       setLoading(false);
       console.log('[LoginScreen] 로그인 처리 완료');
+    }
+  };
+
+  const navigateAfterLogin = (loginResult) => {
+    // 역할에 따른 화면 이동
+    if (loginResult.needsAdditionalInfo) {
+      console.log('[LoginScreen] 게스트 유저, 추가 정보 화면으로 이동');
+      navigation.navigate('AdditionalInfo');
+    } else {
+      console.log('[LoginScreen] 일반 유저, 홈 화면으로 이동');
+      navigation.navigate('Home');
     }
   };
 
@@ -138,6 +168,40 @@ const LoginScreen = () => {
         <Text style={styles.infoText}>
           비회원이라면, 구글 로그인 후 자동으로 회원가입 화면으로 전환됩니다.
         </Text>
+        
+        {/* 디버그 정보 - 개발 환경에서만 표시 */}
+        {__DEV__ && (
+          <View style={styles.debugInfo}>
+            <Text style={styles.debugText}>개발 환경</Text>
+            <TouchableOpacity
+              onPress={() => {
+                Alert.alert(
+                  '스토리지 리셋',
+                  '모든 로컬 데이터를 삭제하시겠습니까?',
+                  [
+                    { text: '취소', style: 'cancel' },
+                    {
+                      text: '삭제',
+                      style: 'destructive',
+                      onPress: async () => {
+                        try {
+                          const { storage } = await import('../utils/storage');
+                          await storage.clearAllData();
+                          Alert.alert('완료', '스토리지가 초기화되었습니다.');
+                        } catch (error) {
+                          Alert.alert('오류', '스토리지 초기화 실패');
+                        }
+                      }
+                    }
+                  ]
+                );
+              }}
+              style={styles.debugButton}
+            >
+              <Text style={styles.debugButtonText}>스토리지 리셋</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -215,6 +279,25 @@ const styles = StyleSheet.create({
     color: COLORS.grey,
     textAlign: 'center',
     paddingHorizontal: SPACING.lg,
+  },
+  debugInfo: {
+    position: 'absolute',
+    bottom: 40,
+    alignItems: 'center',
+  },
+  debugText: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.lightGrey,
+    marginBottom: SPACING.xs,
+  },
+  debugButton: {
+    padding: SPACING.xs,
+    backgroundColor: COLORS.lightGrey + '20',
+    borderRadius: BORDER_RADIUS.xs,
+  },
+  debugButtonText: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.lightGrey,
   },
 });
 

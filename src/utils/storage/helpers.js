@@ -1,3 +1,4 @@
+// src/utils/storage/helpers.js
 import { storage } from './index';
 import { CURRENT_STORAGE_VERSION } from './keys';
 
@@ -106,13 +107,31 @@ export const storageHelpers = {
 
       // 스토리지 재초기화
       storage.isInitialized = false;
+      storage.isInitializing = false;
       storage.initPromise = null;
+
+      // 메모리 폴백 초기화
+      if (storage._memoryFallback) {
+        storage._memoryFallback = {};
+      }
+
+      // 약간의 지연 후 재초기화 시도
+      await new Promise(resolve => setTimeout(resolve, 300));
 
       const initResult = await storage.initialize();
 
       if (initResult) {
         console.log('[StorageHelpers] 스토리지 복구 성공');
-        return true;
+        
+        // 검증 테스트
+        const validation = await this.validateStorage();
+        if (validation.isValid) {
+          console.log('[StorageHelpers] 스토리지 검증 성공');
+          return true;
+        } else {
+          console.warn('[StorageHelpers] 스토리지 검증 실패:', validation.error);
+          return false;
+        }
       } else {
         console.warn('[StorageHelpers] 스토리지 복구 실패');
         return false;
@@ -121,5 +140,84 @@ export const storageHelpers = {
       console.error('[StorageHelpers] 스토리지 복구 오류:', error);
       return false;
     }
+  },
+
+  /**
+   * 스토리지 상태 리포트
+   * 
+   * @description 현재 스토리지 상태를 자세히 확인
+   * @returns {Promise<Object>} 상태 리포트
+   */
+  async getStorageReport() {
+    try {
+      const report = {
+        initialized: storage.isInitialized,
+        initializing: storage.isInitializing,
+        memoryFallbackActive: !!(storage._memoryFallback && Object.keys(storage._memoryFallback).length > 0),
+        memoryFallbackKeys: storage._memoryFallback ? Object.keys(storage._memoryFallback) : [],
+        validation: await this.validateStorage(),
+        timestamp: new Date().toISOString()
+      };
+
+      // 저장된 데이터 크기 확인
+      try {
+        const keys = ['token', 'userInfo', 'currentDriveStatus', 'driveSchedules'];
+        const sizes = {};
+        
+        for (const key of keys) {
+          const value = await storage._safeGetItem(key);
+          if (value) {
+            sizes[key] = value.length;
+          }
+        }
+        
+        report.dataSizes = sizes;
+      } catch (error) {
+        report.dataSizes = { error: error.message };
+      }
+
+      return report;
+    } catch (error) {
+      console.error('[StorageHelpers] 상태 리포트 생성 오류:', error);
+      return {
+        error: error.message,
+        timestamp: new Date().toISOString()
+      };
+    }
+  },
+
+  /**
+   * 임시 스토리지 사용 (메모리)
+   * 
+   * @description AsyncStorage를 사용할 수 없을 때 메모리 스토리지 사용
+   * @returns {Object} 메모리 스토리지 인터페이스
+   */
+  getMemoryStorage() {
+    const memoryStore = {};
+    
+    return {
+      getItem: async (key) => {
+        return memoryStore[key] || null;
+      },
+      
+      setItem: async (key, value) => {
+        memoryStore[key] = value;
+        return true;
+      },
+      
+      removeItem: async (key) => {
+        delete memoryStore[key];
+        return true;
+      },
+      
+      clear: async () => {
+        Object.keys(memoryStore).forEach(key => delete memoryStore[key]);
+        return true;
+      },
+      
+      getAllKeys: async () => {
+        return Object.keys(memoryStore);
+      }
+    };
   }
 };
