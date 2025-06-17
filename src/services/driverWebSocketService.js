@@ -19,6 +19,8 @@ class DriverWebSocketService {
     this.busNumber = null;
     this.organizationId = null;
     this.operationId = null;
+    this.driverId = null;
+    this.driverName = null;
 
     // AppState 리스너
     this.appStateSubscription = null;
@@ -28,24 +30,36 @@ class DriverWebSocketService {
    * WebSocket 초기화 및 연결
    */
   async connect(busNumber, organizationId, operationId) {
-    console.log('[DriverWebSocket] 연결 시작 - 버스:', busNumber, '조직:', organizationId);
+    console.log('[DriverWebSocket] 연결 시작 - 버스:', busNumber, '조직:', organizationId, '운행:', operationId);
 
     this.busNumber = busNumber;
     this.organizationId = organizationId;
     this.operationId = operationId;
 
     try {
-      // 토큰 가져오기
+      // 토큰과 사용자 정보 가져오기
       const token = await storage.getToken();
       if (!token) {
         throw new Error('인증 토큰이 없습니다');
       }
+
+      // 사용자 정보 저장 (운전자 식별용)
+      const userInfo = await storage.getUserInfo();
+      this.driverId = userInfo?.id || userInfo?.email || 'unknown';
+      this.driverName = userInfo?.name || '운전자';
 
       // WebSocket URL 구성
       const wsUrls = getWebSocketUrl();
       const wsUrl = `${wsUrls.driver}?token=${token}`;
 
       console.log('[DriverWebSocket] 연결 URL:', wsUrl);
+      console.log('[DriverWebSocket] 운전자 정보:', {
+        driverId: this.driverId,
+        driverName: this.driverName,
+        busNumber: this.busNumber,
+        organizationId: this.organizationId,
+        operationId: this.operationId
+      });
 
       // WebSocket 연결
       this.ws = new WebSocket(wsUrl);
@@ -63,8 +77,8 @@ class DriverWebSocketService {
   }
 
   /**
-   * WebSocket 이벤트 핸들러 설정
-   */
+ * WebSocket 이벤트 핸들러 설정
+ */
   setupEventHandlers() {
     if (!this.ws) return;
 
@@ -82,13 +96,16 @@ class DriverWebSocketService {
 
       // 위치 업데이트 시작
       this.startLocationUpdates();
+
+      // 초기 버스 상태만 전송 (위치 없이)
+      this.sendBusStatusUpdate('IN_OPERATION');
     };
 
     // 메시지 수신
     this.ws.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data);
-        console.log('[DriverWebSocket] 메시지 수신:', message.type);
+        console.log('[DriverWebSocket] 메시지 수신:', message.type, message);
 
         this.handleMessage(message);
       } catch (error) {
@@ -106,7 +123,7 @@ class DriverWebSocketService {
       this.stopLocationUpdates();
 
       // 재연결 시도
-      if (this.reconnectAttempts < this.maxReconnectAttempts) {
+      if (this.reconnectAttempts < this.maxReconnectAttempts && WS_CONFIG.reconnect.enabled) {
         this.scheduleReconnect();
       }
     };
@@ -152,15 +169,51 @@ class DriverWebSocketService {
   }
 
   /**
-     * 위치 업데이트 전송
-     */
+   * 운전자 등록 메시지 전송
+   */
+  sendDriverRegistration() {
+    const registrationMessage = {
+      type: WS_MESSAGE_TYPES.DRIVER_REGISTRATION,
+      driverId: this.driverId,
+      driverName: this.driverName,
+      busNumber: this.busNumber,
+      organizationId: this.organizationId,
+      operationId: this.operationId,
+      timestamp: Date.now()
+    };
+
+    console.log('[DriverWebSocket] 운전자 등록 메시지 전송:', registrationMessage);
+    this.sendMessage(registrationMessage);
+  }
+
+  /**
+ * 위치 업데이트 전송
+ */
   sendLocationUpdate(location, occupiedSeats = 0) {
     if (!this.isConnected || !this.busNumber || !this.organizationId) {
       console.warn('[DriverWebSocket] 위치 업데이트 스킵 - 연결되지 않음');
       return;
     }
 
-    // 버스 위치는 백엔드에서 정상적으로 처리하므로 swap하지 않음
+    // 유효한 위치인지 확인
+    if (!location || !location.latitude || !location.longitude) {
+      console.warn('[DriverWebSocket] 위치 업데이트 스킵 - 유효하지 않은 위치 데이터');
+      return;
+    }
+
+    // (0, 0) 위치 필터링
+    if (location.latitude === 0 && location.longitude === 0) {
+      console.warn('[DriverWebSocket] 위치 업데이트 스킵 - (0, 0) 위치');
+      return;
+    }
+
+    // GPS 좌표 유효성 검증
+    if (location.latitude < -90 || location.latitude > 90 ||
+      location.longitude < -180 || location.longitude > 180) {
+      console.warn('[DriverWebSocket] 위치 업데이트 스킵 - 유효하지 않은 GPS 좌표:', location);
+      return;
+    }
+
     const locationMessage = {
       type: WS_MESSAGE_TYPES.LOCATION_UPDATE,
       busNumber: this.busNumber,
@@ -185,8 +238,17 @@ class DriverWebSocketService {
   sendMessage(message) {
     if (this.isConnected && this.ws && this.ws.readyState === WS_READY_STATE.OPEN) {
       try {
-        this.ws.send(JSON.stringify(message));
-        console.log('[DriverWebSocket] 메시지 전송:', message.type);
+        // 모든 메시지에 기본 정보 포함
+        const enrichedMessage = {
+          ...message,
+          driverId: message.driverId || this.driverId,
+          busNumber: message.busNumber || this.busNumber,
+          organizationId: message.organizationId || this.organizationId,
+          operationId: message.operationId || this.operationId
+        };
+
+        this.ws.send(JSON.stringify(enrichedMessage));
+        console.log('[DriverWebSocket] 메시지 전송:', enrichedMessage.type);
       } catch (error) {
         console.error('[DriverWebSocket] 메시지 전송 실패:', error);
         this.pendingMessages.push(message);
@@ -195,6 +257,11 @@ class DriverWebSocketService {
       // 연결이 안된 경우 펜딩 큐에 추가
       console.log('[DriverWebSocket] 메시지 큐에 추가:', message.type);
       this.pendingMessages.push(message);
+
+      // 큐 크기 제한
+      if (this.pendingMessages.length > WS_CONFIG.messageQueue.maxSize) {
+        this.pendingMessages.shift(); // 가장 오래된 메시지 제거
+      }
     }
   }
 
@@ -206,7 +273,10 @@ class DriverWebSocketService {
 
     this.heartbeatInterval = setInterval(() => {
       if (this.isConnected) {
-        this.sendMessage({ type: WS_MESSAGE_TYPES.HEARTBEAT });
+        this.sendMessage({
+          type: WS_MESSAGE_TYPES.HEARTBEAT,
+          timestamp: Date.now()
+        });
       }
     }, WS_CONFIG.heartbeat.interval);
   }
@@ -222,15 +292,20 @@ class DriverWebSocketService {
   }
 
   /**
-   * 위치 업데이트 시작
-   */
+ * 위치 업데이트 시작
+ */
   startLocationUpdates() {
     this.stopLocationUpdates(); // 기존 업데이트 정리
 
     // 설정된 간격마다 위치 전송
     this.locationUpdateInterval = setInterval(() => {
       if (this.currentLocation && this.isConnected) {
-        this.sendLocationUpdate(this.currentLocation);
+        // 유효한 위치인 경우에만 전송
+        if (this.currentLocation.latitude !== 0 || this.currentLocation.longitude !== 0) {
+          this.sendLocationUpdate(this.currentLocation);
+        } else {
+          console.log('[DriverWebSocket] 위치 업데이트 대기 중 - 유효한 GPS 위치 없음');
+        }
       }
     }, WS_CONFIG.locationUpdate.interval);
   }
@@ -246,16 +321,35 @@ class DriverWebSocketService {
   }
 
   /**
-   * 현재 위치 업데이트
-   */
+ * 현재 위치 업데이트
+ */
   updateCurrentLocation(location) {
-    this.currentLocation = location;
+    // 유효한 위치인 경우에만 저장
+    if (location && location.latitude && location.longitude &&
+      (location.latitude !== 0 || location.longitude !== 0)) {
+      this.currentLocation = location;
+      console.log('[DriverWebSocket] 현재 위치 업데이트:', {
+        latitude: location.latitude,
+        longitude: location.longitude
+      });
+    } else {
+      console.warn('[DriverWebSocket] 무효한 위치 데이터 무시:', location);
+    }
+  }
+
+  /**
+   * 현재 승객 수 업데이트
+   */
+  updateOccupiedSeats(seats) {
+    this.currentOccupiedSeats = seats;
   }
 
   /**
    * 펜딩 메시지 전송
    */
   flushPendingMessages() {
+    console.log(`[DriverWebSocket] 펜딩 메시지 전송 시작: ${this.pendingMessages.length}개`);
+
     while (this.pendingMessages.length > 0 && this.isConnected) {
       const message = this.pendingMessages.shift();
       this.sendMessage(message);
@@ -288,6 +382,7 @@ class DriverWebSocketService {
    */
   on(messageType, handler) {
     this.messageHandlers.set(messageType, handler);
+    console.log(`[DriverWebSocket] 핸들러 등록: ${messageType}`);
   }
 
   /**
@@ -295,6 +390,7 @@ class DriverWebSocketService {
    */
   off(messageType) {
     this.messageHandlers.delete(messageType);
+    console.log(`[DriverWebSocket] 핸들러 제거: ${messageType}`);
   }
 
   /**
@@ -346,6 +442,9 @@ class DriverWebSocketService {
     this.busNumber = null;
     this.organizationId = null;
     this.operationId = null;
+    this.driverId = null;
+    this.driverName = null;
+    this.currentOccupiedSeats = 0;
   }
 
   /**
@@ -361,27 +460,40 @@ class DriverWebSocketService {
   sendBusStatusUpdate(status) {
     const statusMessage = {
       type: WS_MESSAGE_TYPES.BUS_STATUS_UPDATE,
+      driverId: this.driverId,
+      driverName: this.driverName,
       busNumber: this.busNumber,
       organizationId: this.organizationId,
+      operationId: this.operationId,
       status: status,
       timestamp: Date.now()
     };
 
+    console.log('[DriverWebSocket] 버스 상태 업데이트 전송:', statusMessage);
     this.sendMessage(statusMessage);
   }
 
   /**
    * 승객 탑승/하차 알림 전송
    */
-  sendPassengerUpdate(action, passengerInfo) {
+  sendPassengerUpdate(action, passengerInfo, currentOccupiedSeats) {
     const passengerMessage = {
       type: WS_MESSAGE_TYPES.PASSENGER_BOARDING,
+      driverId: this.driverId,
       busNumber: this.busNumber,
       organizationId: this.organizationId,
+      operationId: this.operationId,
       action: action, // 'BOARD' or 'ALIGHT'
       passengerInfo: passengerInfo,
+      occupiedSeats: currentOccupiedSeats,
       timestamp: Date.now()
     };
+
+    console.log('[DriverWebSocket] 승객 업데이트 전송:', {
+      action: action,
+      occupiedSeats: currentOccupiedSeats,
+      passengerInfo: passengerInfo
+    });
 
     this.sendMessage(passengerMessage);
   }
@@ -397,9 +509,11 @@ class DriverWebSocketService {
     }
 
     const emergencyMessage = {
-      type: 'emergency',
+      type: WS_MESSAGE_TYPES.EMERGENCY,
+      driverId: this.driverId,
       busNumber: this.busNumber,
       organizationId: this.organizationId,
+      operationId: this.operationId,
       emergencyType: emergencyType,
       details: details,
       location: emergencyLocation,
@@ -426,6 +540,10 @@ class DriverWebSocketService {
       pendingMessages: this.pendingMessages.length,
       busNumber: this.busNumber,
       organizationId: this.organizationId,
+      operationId: this.operationId,
+      driverId: this.driverId,
+      driverName: this.driverName,
+      currentOccupiedSeats: this.currentOccupiedSeats || 0,
       handlers: Array.from(this.messageHandlers.keys())
     };
   }

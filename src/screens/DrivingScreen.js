@@ -126,28 +126,33 @@ const DrivingScreen = ({ navigation, route }) => {
 
   // WebSocket 연결 및 위치 추적
   useEffect(() => {
+    let watchId = null;
+    let isWebSocketConnected = false;
+
     const initializeWebSocket = async () => {
       try {
         if (driverWebSocketService.checkConnection()) {
           setWsConnected(true);
           console.log('[DrivingScreen] WebSocket 이미 연결됨');
-        } else {
-          const userInfo = await storage.getUserInfo();
-          const organizationId = drive.organizationId || userInfo?.organizationId;
-
-          if (!organizationId) {
-            console.error('[DrivingScreen] 조직 ID를 찾을 수 없습니다');
-            return;
-          }
-
-          await driverWebSocketService.connect(
-            drive.busNumber || drive.busRealNumber,
-            organizationId,
-            drive.operationId || drive.id
-          );
-
-          setWsConnected(true);
+          return;
         }
+
+        const userInfo = await storage.getUserInfo();
+        const organizationId = drive.organizationId || userInfo?.organizationId;
+
+        if (!organizationId) {
+          console.error('[DrivingScreen] 조직 ID를 찾을 수 없습니다');
+          return;
+        }
+
+        await driverWebSocketService.connect(
+          drive.busNumber || drive.busRealNumber,
+          organizationId,
+          drive.operationId || drive.id
+        );
+
+        setWsConnected(true);
+        isWebSocketConnected = true;
 
         // WebSocket 메시지 핸들러 등록
         driverWebSocketService.on('busUpdate', handleBusUpdate);
@@ -165,80 +170,95 @@ const DrivingScreen = ({ navigation, route }) => {
     };
 
     // 위치 추적 시작
-    const watchId = startLocationTracking((location) => {
-      console.log('[DrivingScreen] GPS 위치 업데이트:', {
-        latitude: location.latitude,
-        longitude: location.longitude,
-        speed: location.speed,
-        accuracy: location.accuracy,
-        timestamp: new Date(location.timestamp).toLocaleTimeString()
-      });
+    const startTracking = () => {
+      watchId = startLocationTracking((location) => {
+        console.log('[DrivingScreen] GPS 위치 업데이트:', {
+          latitude: location.latitude,
+          longitude: location.longitude,
+          speed: location.speed,
+          accuracy: location.accuracy,
+          timestamp: new Date(location.timestamp).toLocaleTimeString()
+        });
 
-      setCurrentLocationInfo(location);
-
-      // 속도 정보 업데이트
-      if (location.speed !== null && location.speed !== undefined) {
-        const speedKmh = location.speed * 3.6; // m/s를 km/h로 변환
-        speedHistory.current.push(speedKmh);
-
-        // 최근 10개의 속도만 유지
-        if (speedHistory.current.length > 10) {
-          speedHistory.current.shift();
+        // 유효한 위치인지 확인
+        if (!location || !location.latitude || !location.longitude ||
+          (location.latitude === 0 && location.longitude === 0)) {
+          console.warn('[DrivingScreen] 무효한 GPS 위치 수신:', location);
+          return;
         }
 
-        // 평균 속도 계산
-        const avgSpeed = speedHistory.current.reduce((a, b) => a + b, 0) / speedHistory.current.length;
+        setCurrentLocationInfo(location);
 
-        setDrivingInfo(prev => ({
-          ...prev,
-          currentSpeed: Math.round(speedKmh),
-          averageSpeed: Math.round(avgSpeed),
-        }));
-      }
+        // 첫 번째 유효한 위치를 받았을 때 WebSocket 연결
+        if (!isWebSocketConnected && location.latitude !== 0 && location.longitude !== 0) {
+          console.log('[DrivingScreen] 첫 번째 유효한 위치 수신 - WebSocket 연결 시작');
+          initializeWebSocket();
+        }
 
-      // WebSocket으로 위치 전송 (브로드캐스트)
-      if (driverWebSocketService.checkConnection()) {
-        // 현재 위치 업데이트
-        driverWebSocketService.updateCurrentLocation(location);
+        // 속도 정보 업데이트
+        if (location.speed !== null && location.speed !== undefined) {
+          const speedKmh = location.speed * 3.6; // m/s를 km/h로 변환
+          speedHistory.current.push(speedKmh);
 
-        // 위치와 좌석 정보 전송
-        driverWebSocketService.sendLocationUpdate(location, drivingInfo.occupiedSeats);
-      }
+          // 최근 10개의 속도만 유지
+          if (speedHistory.current.length > 10) {
+            speedHistory.current.shift();
+          }
 
-      // 목적지 근접 여부 확인
-      if (drive.endLocation?.latitude && drive.endLocation?.longitude) {
-        // 디버깅: 좌표 확인
-        debugLocationSwap(location, drive.endLocation, '목적지 거리 계산');
+          // 평균 속도 계산
+          const avgSpeed = speedHistory.current.reduce((a, b) => a + b, 0) / speedHistory.current.length;
 
-        const distance = calculateDistance(
-          location.latitude,
-          location.longitude,
-          drive.endLocation.latitude,
-          drive.endLocation.longitude
-        );
+          setDrivingInfo(prev => ({
+            ...prev,
+            currentSpeed: Math.round(speedKmh),
+            averageSpeed: Math.round(avgSpeed),
+          }));
+        }
 
-        const distanceInMeters = distance * 1000; // km를 m로 변환
-        const estimatedTime = estimateArrivalTime(distanceInMeters, location.speed || 8.33);
+        // WebSocket으로 위치 전송 (브로드캐스트)
+        if (driverWebSocketService.checkConnection()) {
+          // 현재 위치 업데이트
+          driverWebSocketService.updateCurrentLocation(location);
 
-        console.log('[DrivingScreen] 목적지까지 거리:', {
-          목적지: drive.endLocation.name,
-          거리_미터: distanceInMeters,
-          예상_도착: estimatedTime,
-          근처여부: distance < 0.1
-        });
+          // 위치와 좌석 정보 전송
+          driverWebSocketService.sendLocationUpdate(location, drivingInfo.occupiedSeats);
+        }
 
-        setDestinationInfo({
-          isNear: distance < 0.1, // 100m = 0.1km
-          distance: distanceInMeters,
-          estimatedTime: estimatedTime,
-        });
-      }
-    });
+        // 목적지 근접 여부 확인
+        if (drive.endLocation?.latitude && drive.endLocation?.longitude) {
+          // 디버깅: 좌표 확인
+          debugLocationSwap(location, drive.endLocation, '목적지 거리 계산');
 
-    setLocationTrackingId(watchId);
+          const distance = calculateDistance(
+            location.latitude,
+            location.longitude,
+            drive.endLocation.latitude,
+            drive.endLocation.longitude
+          );
 
-    // WebSocket 초기화
-    initializeWebSocket();
+          const distanceInMeters = distance * 1000; // km를 m로 변환
+          const estimatedTime = estimateArrivalTime(distanceInMeters, location.speed || 8.33);
+
+          console.log('[DrivingScreen] 목적지까지 거리:', {
+            목적지: drive.endLocation.name,
+            거리_미터: distanceInMeters,
+            예상_도착: estimatedTime,
+            근처여부: distance < 0.1
+          });
+
+          setDestinationInfo({
+            isNear: distance < 0.1, // 100m = 0.1km
+            distance: distanceInMeters,
+            estimatedTime: estimatedTime,
+          });
+        }
+      });
+
+      setLocationTrackingId(watchId);
+    };
+
+    // 위치 추적 먼저 시작
+    startTracking();
 
     // 앱 상태 리스너
     const appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
@@ -251,13 +271,12 @@ const DrivingScreen = ({ navigation, route }) => {
       driverWebSocketService.off('boarding');
 
       // 위치 추적 중지
-      if (locationTrackingId) {
-        stopLocationTracking(locationTrackingId);
+      if (watchId) {
+        stopLocationTracking(watchId);
       }
       appStateSubscription.remove();
     };
   }, []);
-
   // WebSocket 메시지 핸들러들
   const handleBusUpdate = (message) => {
     console.log('[DrivingScreen] 버스 상태 업데이트:', message);
