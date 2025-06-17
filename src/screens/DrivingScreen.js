@@ -8,6 +8,8 @@ import {
   Alert,
   BackHandler,
   AppState,
+  ScrollView,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, SHADOWS, SPACING } from '../constants/theme';
@@ -16,24 +18,74 @@ import { startLocationTracking, stopLocationTracking, getCurrentLocation } from 
 import driverWebSocketService from '../services/driverWebSocketService';
 import { storage } from '../utils/storage';
 import { toKSTLocaleString, getNowKST, toKSTISOString } from '../utils/kstTimeUtils';
+import DriveEndConfirmationModal from '../components/DriveEndConfirmationModal';
 
 const DrivingScreen = ({ navigation, route }) => {
   const { drive } = route.params;
+  
+  // 상태 관리
   const [currentTime, setCurrentTime] = useState(getNowKST());
-  const [nextStopInfo, setNextStopInfo] = useState(null);
-  const [isNearDestination, setIsNearDestination] = useState(false);
   const [elapsedTime, setElapsedTime] = useState('00:00:00');
   const [locationTrackingId, setLocationTrackingId] = useState(null);
-  const [occupiedSeats, setOccupiedSeats] = useState(0);
   const [wsConnected, setWsConnected] = useState(false);
-  const [totalPassengers, setTotalPassengers] = useState(0);
-  const [boardedCount, setBoardedCount] = useState(0);
-  const [alightedCount, setAlightedCount] = useState(0);
-  const [distanceToDestination, setDistanceToDestination] = useState(null);
   const [currentLocationInfo, setCurrentLocationInfo] = useState(null);
+  
+  // 운행 정보 상태
+  const [drivingInfo, setDrivingInfo] = useState({
+    occupiedSeats: 0,
+    totalPassengers: 0,
+    boardedCount: 0,
+    alightedCount: 0,
+    currentSpeed: 0,
+    averageSpeed: 0,
+    totalDistance: 0,
+  });
+  
+  // 정류장 정보 상태
+  const [stationInfo, setStationInfo] = useState({
+    currentStation: null,
+    nextStation: null,
+    remainingStations: 0,
+    progress: 0,
+  });
+  
+  // 목적지 정보 상태
+  const [destinationInfo, setDestinationInfo] = useState({
+    isNear: false,
+    distance: null,
+    estimatedTime: null,
+  });
+  
+  // 운행 종료 모달 상태
+  const [showEndConfirmModal, setShowEndConfirmModal] = useState(false);
+  
+  // 애니메이션
+  const progressAnimation = useRef(new Animated.Value(0)).current;
+  const pulseAnimation = useRef(new Animated.Value(1)).current;
   
   const appState = useRef(AppState.currentState);
   const locationUpdateInterval = useRef(null);
+  const speedHistory = useRef([]);
+
+  // 펄스 애니메이션 (운행 중 표시)
+  useEffect(() => {
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnimation, {
+          toValue: 1.2,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnimation, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, []);
 
   // 운행 시간 카운터
   useEffect(() => {
@@ -83,6 +135,7 @@ const DrivingScreen = ({ navigation, route }) => {
 
         // WebSocket 메시지 핸들러 등록
         driverWebSocketService.on('busUpdate', handleBusUpdate);
+        driverWebSocketService.on('stationUpdate', handleStationUpdate);
         driverWebSocketService.on('passengerBoarding', handlePassengerBoarding);
         driverWebSocketService.on('boarding', handlePassengerBoarding);
 
@@ -100,10 +153,30 @@ const DrivingScreen = ({ navigation, route }) => {
       currentLocation = location;
       setCurrentLocationInfo(location);
       
+      // 속도 정보 업데이트
+      if (location.speed !== null && location.speed !== undefined) {
+        const speedKmh = location.speed * 3.6; // m/s를 km/h로 변환
+        speedHistory.current.push(speedKmh);
+        
+        // 최근 10개의 속도만 유지
+        if (speedHistory.current.length > 10) {
+          speedHistory.current.shift();
+        }
+        
+        // 평균 속도 계산
+        const avgSpeed = speedHistory.current.reduce((a, b) => a + b, 0) / speedHistory.current.length;
+        
+        setDrivingInfo(prev => ({
+          ...prev,
+          currentSpeed: Math.round(speedKmh),
+          averageSpeed: Math.round(avgSpeed),
+        }));
+      }
+      
       // WebSocket으로 위치 전송
       if (driverWebSocketService.checkConnection()) {
         driverWebSocketService.updateCurrentLocation(location);
-        driverWebSocketService.sendLocationUpdate(location, occupiedSeats);
+        driverWebSocketService.sendLocationUpdate(location, drivingInfo.occupiedSeats);
       }
 
       // 목적지 근접 여부 확인
@@ -114,8 +187,15 @@ const DrivingScreen = ({ navigation, route }) => {
           drive.endLocation.latitude,
           drive.endLocation.longitude
         );
-        setDistanceToDestination(distance * 1000); // km를 m로 변환
-        setIsNearDestination(distance < 0.1); // 100m = 0.1km
+        
+        const distanceInMeters = distance * 1000; // km를 m로 변환
+        const estimatedTime = estimateArrivalTime(distanceInMeters, location.speed || 8.33);
+        
+        setDestinationInfo({
+          isNear: distance < 0.1, // 100m = 0.1km
+          distance: distanceInMeters,
+          estimatedTime: estimatedTime,
+        });
       }
     });
 
@@ -137,6 +217,7 @@ const DrivingScreen = ({ navigation, route }) => {
     return () => {
       // WebSocket 연결 해제
       driverWebSocketService.off('busUpdate');
+      driverWebSocketService.off('stationUpdate');
       driverWebSocketService.off('passengerBoarding');
       driverWebSocketService.off('boarding');
       
@@ -156,15 +237,35 @@ const DrivingScreen = ({ navigation, route }) => {
     console.log('[DrivingScreen] 버스 상태 업데이트:', message);
     
     if (message.data) {
-      // 다음 정류장 정보 업데이트
-      if (message.data.nextStop) {
-        setNextStopInfo(message.data.nextStop);
-      }
-      
       // 승객 수 업데이트
       if (message.data.occupiedSeats !== undefined) {
-        setOccupiedSeats(message.data.occupiedSeats);
+        setDrivingInfo(prev => ({
+          ...prev,
+          occupiedSeats: message.data.occupiedSeats,
+        }));
       }
+    }
+  };
+
+  const handleStationUpdate = (message) => {
+    console.log('[DrivingScreen] 정류장 업데이트:', message);
+    
+    if (message.data) {
+      const { currentStation, nextStation, progress, remainingStations } = message.data;
+      
+      setStationInfo({
+        currentStation,
+        nextStation,
+        remainingStations: remainingStations || 0,
+        progress: progress || 0,
+      });
+      
+      // 진행률 애니메이션
+      Animated.timing(progressAnimation, {
+        toValue: progress || 0,
+        duration: 1000,
+        useNativeDriver: false,
+      }).start();
     }
   };
 
@@ -174,13 +275,31 @@ const DrivingScreen = ({ navigation, route }) => {
     const { action, userId, passengerInfo } = message.data || message;
     
     if (action === 'BOARD' || action === 'board') {
-      setOccupiedSeats(prev => prev + 1);
-      setBoardedCount(prev => prev + 1);
-      setTotalPassengers(prev => prev + 1);
+      setDrivingInfo(prev => ({
+        ...prev,
+        occupiedSeats: prev.occupiedSeats + 1,
+        boardedCount: prev.boardedCount + 1,
+        totalPassengers: prev.totalPassengers + 1,
+      }));
+      
+      // 탑승 알림
+      showPassengerNotification('탑승', passengerInfo);
     } else if (action === 'ALIGHT' || action === 'alight') {
-      setOccupiedSeats(prev => Math.max(0, prev - 1));
-      setAlightedCount(prev => prev + 1);
+      setDrivingInfo(prev => ({
+        ...prev,
+        occupiedSeats: Math.max(0, prev.occupiedSeats - 1),
+        alightedCount: prev.alightedCount + 1,
+      }));
+      
+      // 하차 알림
+      showPassengerNotification('하차', passengerInfo);
     }
+  };
+
+  // 승객 알림 표시
+  const showPassengerNotification = (type, passengerInfo) => {
+    // 실제 앱에서는 토스트 메시지나 알림으로 구현
+    console.log(`[DrivingScreen] 승객 ${type}:`, passengerInfo);
   };
 
   // 앱 상태 변경 처리
@@ -234,12 +353,18 @@ const DrivingScreen = ({ navigation, route }) => {
         
         // 다음 정류장 정보 업데이트
         if (updateData.nextStop) {
-          setNextStopInfo(updateData.nextStop);
+          setStationInfo(prev => ({
+            ...prev,
+            nextStation: updateData.nextStop,
+          }));
         }
         
         // 목적지 근접 여부 업데이트
         if (updateData.isNearDestination !== undefined) {
-          setIsNearDestination(updateData.isNearDestination);
+          setDestinationInfo(prev => ({
+            ...prev,
+            isNear: updateData.isNearDestination,
+          }));
         }
       }
     } catch (error) {
@@ -261,6 +386,30 @@ const DrivingScreen = ({ navigation, route }) => {
   };
 
   const toRad = (deg) => deg * (Math.PI/180);
+
+  // 도착 예상 시간 계산
+  const estimateArrivalTime = (distanceInMeters, speedMs) => {
+    if (distanceInMeters <= 0 || !speedMs || speedMs <= 0) {
+      return '도착';
+    }
+    
+    const seconds = distanceInMeters / speedMs;
+    const minutes = Math.ceil(seconds / 60);
+    
+    if (minutes < 1) {
+      return '곧 도착';
+    } else if (minutes < 60) {
+      return `약 ${minutes}분`;
+    } else {
+      const hours = Math.floor(minutes / 60);
+      const remainingMinutes = minutes % 60;
+      if (remainingMinutes > 0) {
+        return `약 ${hours}시간 ${remainingMinutes}분`;
+      } else {
+        return `약 ${hours}시간`;
+      }
+    }
+  };
 
   // 거리 포맷팅
   const formatDistance = (meters) => {
@@ -292,10 +441,15 @@ const DrivingScreen = ({ navigation, route }) => {
   }, []);
 
   const handleEndDrive = async () => {
-    if (!isNearDestination && distanceToDestination !== null && distanceToDestination > 100) {
+    // 운행 종료 확인 모달 표시
+    setShowEndConfirmModal(true);
+  };
+
+  const handleEndDriveConfirm = async () => {
+    if (!destinationInfo.isNear && destinationInfo.distance !== null && destinationInfo.distance > 100) {
       Alert.alert(
         '목적지 도착 전',
-        `아직 목적지에서 ${formatDistance(distanceToDestination)} 떨어져 있습니다. 정말 운행을 종료하시겠습니까?`,
+        `아직 목적지에서 ${formatDistance(destinationInfo.distance)} 떨어져 있습니다. 정말 운행을 종료하시겠습니까?`,
         [
           { text: '취소', style: 'cancel' },
           {
@@ -357,10 +511,8 @@ const DrivingScreen = ({ navigation, route }) => {
           ...drive,
           ...completedDrive,
           actualEnd: completedDrive.actualEnd || toKSTISOString(new Date()),
-          totalPassengers,
-          boardedCount,
-          alightedCount,
-          finalOccupiedSeats: occupiedSeats
+          ...drivingInfo,
+          totalDistance: (drivingInfo.totalDistance / 1000).toFixed(1), // km 단위로 변환
         };
         
         // 운행 정보 저장
@@ -382,133 +534,196 @@ const DrivingScreen = ({ navigation, route }) => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
+      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>운행 중</Text>
+          <View style={styles.headerLeft}>
+            <Animated.View style={[styles.liveDot, { transform: [{ scale: pulseAnimation }] }]} />
+            <Text style={styles.headerTitle}>운행 중</Text>
+          </View>
           {wsConnected && (
             <View style={styles.connectionStatus}>
-              <View style={styles.connectedDot} />
-              <Text style={styles.connectionText}>실시간 연결됨</Text>
+              <Text style={styles.connectionText}>🟢 실시간 연결됨</Text>
             </View>
           )}
         </View>
 
-        <View style={styles.drivingStatusContainer}>
-          <View style={styles.statusCard}>
-            <View style={styles.statusHeader}>
-              <View style={styles.liveDot} />
-              <Text style={styles.statusText}>실시간 운행 중</Text>
-            </View>
-
-            <View style={styles.busInfoContainer}>
+        {/* 버스 정보 카드 */}
+        <View style={styles.busInfoCard}>
+          <View style={styles.busHeader}>
+            <View>
               <Text style={styles.busNumber}>{drive.busNumber || drive.busRealNumber}</Text>
               <View style={styles.routeBadge}>
                 <Text style={styles.routeBadgeText}>{drive.routeName || drive.route || '노선 정보 없음'}</Text>
               </View>
             </View>
-
-            <View style={styles.passengerInfoContainer}>
-              <View style={styles.passengerItem}>
-                <Text style={styles.passengerLabel}>탑승 승객</Text>
-                <Text style={styles.passengerValue}>{occupiedSeats}명</Text>
-              </View>
-              <View style={styles.passengerDivider} />
-              <View style={styles.passengerItem}>
-                <Text style={styles.passengerLabel}>총 탑승</Text>
-                <Text style={styles.passengerValue}>{boardedCount}명</Text>
-              </View>
-              <View style={styles.passengerDivider} />
-              <View style={styles.passengerItem}>
-                <Text style={styles.passengerLabel}>총 하차</Text>
-                <Text style={styles.passengerValue}>{alightedCount}명</Text>
-              </View>
-            </View>
-
-            <View style={styles.timeInfoContainer}>
-              <View style={styles.timeInfoItem}>
-                <Text style={styles.timeInfoLabel}>운행 시작</Text>
-                <Text style={styles.timeInfoValue}>
-                  {toKSTLocaleString(drive.actualStart || drive.scheduledStart, {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </Text>
-              </View>
-              <View style={styles.timeInfoDivider} />
-              <View style={styles.timeInfoItem}>
-                <Text style={styles.timeInfoLabel}>현재 시간</Text>
-                <Text style={styles.timeInfoValue}>
-                  {toKSTLocaleString(currentTime, {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </Text>
-              </View>
-              <View style={styles.timeInfoDivider} />
-              <View style={styles.timeInfoItem}>
-                <Text style={styles.timeInfoLabel}>운행 시간</Text>
-                <Text style={styles.timeInfoValue}>{elapsedTime}</Text>
-              </View>
+            <View style={styles.timeContainer}>
+              <Text style={styles.timeLabel}>운행 시간</Text>
+              <Text style={styles.elapsedTime}>{elapsedTime}</Text>
             </View>
           </View>
 
-          {nextStopInfo && (
-            <View style={styles.nextStopCard}>
-              <Text style={styles.nextStopLabel}>다음 정거장</Text>
-              <Text style={styles.nextStopName}>{nextStopInfo.name}</Text>
-              {nextStopInfo.estimatedTime && (
-                <View style={styles.timeRemainingContainer}>
-                  <Text style={styles.timeRemainingText}>
-                    {nextStopInfo.estimatedTime}
-                  </Text>
+          {/* 승객 정보 */}
+          <View style={styles.passengerInfoContainer}>
+            <View style={styles.infoItem}>
+              <Text style={styles.infoEmoji}>👥</Text>
+              <Text style={styles.infoLabel}>현재 탑승</Text>
+              <Text style={styles.infoValue}>{drivingInfo.occupiedSeats}명</Text>
+            </View>
+            <View style={styles.infoDivider} />
+            <View style={styles.infoItem}>
+              <Text style={styles.infoEmoji}>📈</Text>
+              <Text style={styles.infoLabel}>총 탑승</Text>
+              <Text style={styles.infoValue}>{drivingInfo.boardedCount}명</Text>
+            </View>
+            <View style={styles.infoDivider} />
+            <View style={styles.infoItem}>
+              <Text style={styles.infoEmoji}>📉</Text>
+              <Text style={styles.infoLabel}>총 하차</Text>
+              <Text style={styles.infoValue}>{drivingInfo.alightedCount}명</Text>
+            </View>
+          </View>
+
+          {/* 속도 정보 */}
+          <View style={styles.speedInfoContainer}>
+            <View style={styles.speedItem}>
+              <Text style={styles.speedLabel}>현재 속도</Text>
+              <Text style={styles.speedValue}>{drivingInfo.currentSpeed} km/h</Text>
+            </View>
+            <View style={styles.speedItem}>
+              <Text style={styles.speedLabel}>평균 속도</Text>
+              <Text style={styles.speedValue}>{drivingInfo.averageSpeed} km/h</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* 정류장 진행 상황 */}
+        {(stationInfo.currentStation || stationInfo.nextStation) && (
+          <View style={styles.stationProgressCard}>
+            <Text style={styles.sectionTitle}>정류장 진행 상황</Text>
+            
+            {/* 진행 바 */}
+            <View style={styles.progressBarContainer}>
+              <View style={styles.progressBarBackground}>
+                <Animated.View
+                  style={[
+                    styles.progressBarFill,
+                    {
+                      width: progressAnimation.interpolate({
+                        inputRange: [0, 100],
+                        outputRange: ['0%', '100%'],
+                      }),
+                    },
+                  ]}
+                />
+              </View>
+              <Text style={styles.progressText}>{Math.round(stationInfo.progress || 0)}%</Text>
+            </View>
+
+            {/* 현재 정류장 */}
+            {stationInfo.currentStation && (
+              <View style={styles.stationItem}>
+                <Text style={styles.stationEmoji}>📍</Text>
+                <View style={styles.stationTextContainer}>
+                  <Text style={styles.stationLabel}>현재 정류장</Text>
+                  <Text style={styles.stationName}>{stationInfo.currentStation.name}</Text>
                 </View>
-              )}
-              {nextStopInfo.sequence !== undefined && nextStopInfo.totalStops && (
-                <Text style={styles.stopSequence}>
-                  {nextStopInfo.sequence} / {nextStopInfo.totalStops} 정거장
-                </Text>
-              )}
-            </View>
-          )}
+              </View>
+            )}
 
-          {/* 도착지 정보 카드 추가 */}
-          {drive.endLocation && (
-            <View style={[styles.destinationCard, isNearDestination && styles.nearDestinationCard]}>
-              <Text style={styles.destinationLabel}>도착지</Text>
-              <Text style={styles.destinationName}>
-                {drive.endLocation.name || '도착지'}
+            {/* 다음 정류장 */}
+            {stationInfo.nextStation && (
+              <View style={[styles.stationItem, styles.nextStationItem]}>
+                <Text style={styles.stationEmoji}>🚩</Text>
+                <View style={styles.stationTextContainer}>
+                  <Text style={styles.stationLabel}>다음 정류장</Text>
+                  <Text style={styles.stationName}>{stationInfo.nextStation.name}</Text>
+                  {stationInfo.nextStation.estimatedTime && (
+                    <Text style={styles.estimatedTime}>{stationInfo.nextStation.estimatedTime}</Text>
+                  )}
+                </View>
+              </View>
+            )}
+
+            {/* 남은 정류장 */}
+            {stationInfo.remainingStations > 0 && (
+              <Text style={styles.remainingStations}>
+                남은 정류장: {stationInfo.remainingStations}개
               </Text>
-              {distanceToDestination !== null && (
-                <Text style={[styles.distanceText, isNearDestination && styles.nearDistanceText]}>
-                  남은 거리: {formatDistance(distanceToDestination)}
-                </Text>
-              )}
-            </View>
-          )}
+            )}
+          </View>
+        )}
 
-          {isNearDestination && (
-            <View style={styles.arrivalNotice}>
-              <Text style={styles.arrivalNoticeText}>
-                목적지에 접근 중입니다. 안전 운행하세요.
+        {/* 도착지 정보 카드 */}
+        {drive.endLocation && (
+          <View style={[styles.destinationCard, destinationInfo.isNear && styles.nearDestinationCard]}>
+            <View style={styles.destinationHeader}>
+              <Text style={styles.destinationEmoji}>
+                {destinationInfo.isNear ? '✅' : '📍'}
               </Text>
+              <Text style={styles.destinationTitle}>도착지</Text>
             </View>
-          )}
-        </View>
-
-        <View style={styles.bottomContainer}>
-          <TouchableOpacity
-            style={[
-              styles.endDriveButton,
-              !isNearDestination && styles.warningButton,
-            ]}
-            onPress={handleEndDrive}
-          >
-            <Text style={styles.endDriveButtonText}>
-              {isNearDestination ? '운행 종료' : '운행 종료 (목적지 도착 전)'}
+            
+            <Text style={styles.destinationName}>
+              {drive.endLocation.name || '도착지'}
             </Text>
-          </TouchableOpacity>
-        </View>
+            
+            {destinationInfo.distance !== null && (
+              <View style={styles.destinationInfo}>
+                <Text style={[styles.distanceText, destinationInfo.isNear && styles.nearDistanceText]}>
+                  남은 거리: {formatDistance(destinationInfo.distance)}
+                </Text>
+                {destinationInfo.estimatedTime && (
+                  <Text style={styles.estimatedArrivalText}>
+                    도착 예정: {destinationInfo.estimatedTime}
+                  </Text>
+                )}
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* 도착 임박 알림 */}
+        {destinationInfo.isNear && (
+          <View style={styles.arrivalNotice}>
+            <Text style={styles.arrivalNoticeText}>
+              ℹ️ 목적지에 접근 중입니다. 안전 운행하세요.
+            </Text>
+          </View>
+        )}
+      </ScrollView>
+
+      {/* 운행 종료 버튼 */}
+      <View style={styles.bottomContainer}>
+        <TouchableOpacity
+          style={[
+            styles.endDriveButton,
+            !destinationInfo.isNear && styles.warningButton,
+          ]}
+          onPress={handleEndDrive}
+        >
+          <Text style={styles.endDriveButtonText}>
+            {destinationInfo.isNear ? '🛑 운행 종료' : '⚠️ 운행 종료 (목적지 도착 전)'}
+          </Text>
+        </TouchableOpacity>
       </View>
+
+      {/* 운행 종료 확인 모달 */}
+      <DriveEndConfirmationModal
+        visible={showEndConfirmModal}
+        onClose={() => setShowEndConfirmModal(false)}
+        onConfirm={handleEndDriveConfirm}
+        driveInfo={{
+          busNumber: drive.busNumber || drive.busRealNumber,
+          elapsedTime: elapsedTime,
+          totalPassengers: drivingInfo.totalPassengers,
+          occupiedSeats: drivingInfo.occupiedSeats,
+        }}
+        destinationInfo={{
+          isNear: destinationInfo.isNear,
+          distance: destinationInfo.distance,
+          distanceText: destinationInfo.distance ? formatDistance(destinationInfo.distance) : null,
+        }}
+      />
     </SafeAreaView>
   );
 };
@@ -520,13 +735,26 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    padding: SPACING.lg,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: SPACING.lg,
+    padding: SPACING.lg,
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  liveDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: COLORS.error,
+    marginRight: SPACING.sm,
   },
   headerTitle: {
     fontSize: FONT_SIZE.xl,
@@ -537,46 +765,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  connectedDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.success,
-    marginRight: SPACING.xs,
-  },
   connectionText: {
     fontSize: FONT_SIZE.xs,
     color: COLORS.success,
   },
-  drivingStatusContainer: {
-    flex: 1,
-  },
-  statusCard: {
+  busInfoCard: {
     backgroundColor: COLORS.white,
+    margin: SPACING.lg,
     borderRadius: BORDER_RADIUS.md,
     padding: SPACING.lg,
-    marginBottom: SPACING.lg,
     ...SHADOWS.small,
   },
-  statusHeader: {
+  busHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.md,
-  },
-  liveDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: COLORS.success,
-    marginRight: SPACING.xs,
-  },
-  statusText: {
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.black,
-    fontWeight: FONT_WEIGHT.medium,
-  },
-  busInfoContainer: {
-    marginBottom: SPACING.md,
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: SPACING.lg,
   },
   busNumber: {
     fontSize: FONT_SIZE.xxl,
@@ -596,96 +800,151 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontWeight: FONT_WEIGHT.medium,
   },
+  timeContainer: {
+    alignItems: 'flex-end',
+  },
+  timeLabel: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.grey,
+    marginBottom: SPACING.xs,
+  },
+  elapsedTime: {
+    fontSize: FONT_SIZE.lg,
+    fontWeight: FONT_WEIGHT.semiBold,
+    color: COLORS.primary,
+  },
   passengerInfoContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: SPACING.md,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.sm,
     backgroundColor: COLORS.background,
     borderRadius: BORDER_RADIUS.sm,
+    marginBottom: SPACING.md,
   },
-  passengerItem: {
+  infoItem: {
     flex: 1,
     alignItems: 'center',
   },
-  passengerLabel: {
+  infoEmoji: {
+    fontSize: 20,
+    marginBottom: SPACING.xs,
+  },
+  infoLabel: {
     fontSize: FONT_SIZE.xs,
     color: COLORS.grey,
     marginBottom: SPACING.xs,
   },
-  passengerValue: {
-    fontSize: FONT_SIZE.md,
+  infoValue: {
+    fontSize: FONT_SIZE.lg,
     color: COLORS.black,
     fontWeight: FONT_WEIGHT.semiBold,
   },
-  passengerDivider: {
+  infoDivider: {
     width: 1,
-    height: 30,
+    height: 40,
     backgroundColor: COLORS.border,
   },
-  timeInfoContainer: {
+  speedInfoContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'space-around',
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  speedItem: {
+    flexDirection: 'row',
     alignItems: 'center',
   },
-  timeInfoItem: {
-    flex: 1,
-  },
-  timeInfoDivider: {
-    width: 1,
-    height: 30,
-    backgroundColor: COLORS.border,
-    marginHorizontal: SPACING.xs,
-  },
-  timeInfoLabel: {
+  speedLabel: {
     fontSize: FONT_SIZE.xs,
     color: COLORS.grey,
-    marginBottom: SPACING.xs,
+    marginRight: SPACING.sm,
   },
-  timeInfoValue: {
+  speedValue: {
     fontSize: FONT_SIZE.sm,
     color: COLORS.black,
     fontWeight: FONT_WEIGHT.medium,
   },
-  nextStopCard: {
+  stationProgressCard: {
     backgroundColor: COLORS.white,
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.lg,
     borderRadius: BORDER_RADIUS.md,
     padding: SPACING.lg,
-    marginBottom: SPACING.lg,
     ...SHADOWS.small,
   },
-  nextStopLabel: {
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.grey,
-    marginBottom: SPACING.xs,
-  },
-  nextStopName: {
-    fontSize: FONT_SIZE.xl,
+  sectionTitle: {
+    fontSize: FONT_SIZE.lg,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.black,
-    marginBottom: SPACING.sm,
+    marginBottom: SPACING.md,
   },
-  timeRemainingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  progressBarContainer: {
+    marginBottom: SPACING.lg,
   },
-  timeRemainingText: {
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.primary,
-    fontWeight: FONT_WEIGHT.medium,
+  progressBarBackground: {
+    height: 8,
+    backgroundColor: COLORS.lightGrey,
+    borderRadius: 4,
+    overflow: 'hidden',
   },
-  stopSequence: {
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: COLORS.primary,
+    borderRadius: 4,
+  },
+  progressText: {
     fontSize: FONT_SIZE.xs,
     color: COLORS.grey,
     marginTop: SPACING.xs,
+    textAlign: 'right',
+  },
+  stationItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  stationEmoji: {
+    fontSize: 20,
+    marginRight: SPACING.md,
+  },
+  nextStationItem: {
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  stationTextContainer: {
+    flex: 1,
+  },
+  stationLabel: {
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.grey,
+    marginBottom: SPACING.xs,
+  },
+  stationName: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.semiBold,
+    color: COLORS.black,
+  },
+  estimatedTime: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.primary,
+    marginTop: SPACING.xs,
+  },
+  remainingStations: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.grey,
+    textAlign: 'center',
+    marginTop: SPACING.md,
   },
   destinationCard: {
     backgroundColor: COLORS.white,
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.lg,
     borderRadius: BORDER_RADIUS.md,
     padding: SPACING.lg,
-    marginBottom: SPACING.lg,
     borderLeftWidth: 3,
     borderLeftColor: COLORS.primary,
     ...SHADOWS.small,
@@ -694,16 +953,28 @@ const styles = StyleSheet.create({
     borderLeftColor: COLORS.success,
     backgroundColor: COLORS.success + '10',
   },
-  destinationLabel: {
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.grey,
-    marginBottom: SPACING.xs,
+  destinationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  destinationEmoji: {
+    fontSize: 24,
+    marginRight: SPACING.sm,
+  },
+  destinationTitle: {
+    fontSize: FONT_SIZE.md,
+    fontWeight: FONT_WEIGHT.semiBold,
+    color: COLORS.black,
   },
   destinationName: {
     fontSize: FONT_SIZE.lg,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.black,
-    marginBottom: SPACING.xs,
+    marginBottom: SPACING.sm,
+  },
+  destinationInfo: {
+    marginTop: SPACING.sm,
   },
   distanceText: {
     fontSize: FONT_SIZE.sm,
@@ -713,10 +984,16 @@ const styles = StyleSheet.create({
   nearDistanceText: {
     color: COLORS.success,
   },
+  estimatedArrivalText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.grey,
+    marginTop: SPACING.xs,
+  },
   arrivalNotice: {
     backgroundColor: COLORS.success,
     borderRadius: BORDER_RADIUS.md,
     padding: SPACING.md,
+    marginHorizontal: SPACING.lg,
     marginBottom: SPACING.lg,
   },
   arrivalNoticeText: {
@@ -726,13 +1003,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   bottomContainer: {
-    padding: SPACING.md,
+    padding: SPACING.lg,
+    backgroundColor: COLORS.white,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
   },
   endDriveButton: {
     backgroundColor: COLORS.primary,
     borderRadius: BORDER_RADIUS.sm,
     paddingVertical: SPACING.md,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   warningButton: {
     backgroundColor: COLORS.warning,
