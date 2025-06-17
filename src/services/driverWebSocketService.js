@@ -19,7 +19,7 @@ class DriverWebSocketService {
     this.busNumber = null;
     this.organizationId = null;
     this.operationId = null;
-    
+
     // AppState 리스너
     this.appStateSubscription = null;
   }
@@ -29,7 +29,7 @@ class DriverWebSocketService {
    */
   async connect(busNumber, organizationId, operationId) {
     console.log('[DriverWebSocket] 연결 시작 - 버스:', busNumber, '조직:', organizationId);
-    
+
     this.busNumber = busNumber;
     this.organizationId = organizationId;
     this.operationId = operationId;
@@ -49,10 +49,10 @@ class DriverWebSocketService {
 
       // WebSocket 연결
       this.ws = new WebSocket(wsUrl);
-      
+
       // 이벤트 핸들러 설정
       this.setupEventHandlers();
-      
+
       // AppState 리스너 설정
       this.setupAppStateListener();
 
@@ -76,10 +76,10 @@ class DriverWebSocketService {
 
       // 연결 성공 후 펜딩 메시지 전송
       this.flushPendingMessages();
-      
+
       // 하트비트 시작
       this.startHeartbeat();
-      
+
       // 위치 업데이트 시작
       this.startLocationUpdates();
     };
@@ -89,7 +89,7 @@ class DriverWebSocketService {
       try {
         const message = JSON.parse(event.data);
         console.log('[DriverWebSocket] 메시지 수신:', message.type);
-        
+
         this.handleMessage(message);
       } catch (error) {
         console.error('[DriverWebSocket] 메시지 파싱 오류:', error);
@@ -100,11 +100,11 @@ class DriverWebSocketService {
     this.ws.onclose = (event) => {
       console.log('[DriverWebSocket] 연결 종료:', event.code, event.reason);
       this.isConnected = false;
-      
+
       // 정리 작업
       this.stopHeartbeat();
       this.stopLocationUpdates();
-      
+
       // 재연결 시도
       if (this.reconnectAttempts < this.maxReconnectAttempts) {
         this.scheduleReconnect();
@@ -152,29 +152,29 @@ class DriverWebSocketService {
   }
 
   /**
-   * 위치 업데이트 전송
-   */
+     * 위치 업데이트 전송
+     */
   sendLocationUpdate(location, occupiedSeats = 0) {
     if (!this.isConnected || !this.busNumber || !this.organizationId) {
       console.warn('[DriverWebSocket] 위치 업데이트 스킵 - 연결되지 않음');
       return;
     }
 
-    // 백엔드 형식으로 위치 변환
-    const backendLocation = swapLocationForBackend({
-      latitude: location.latitude,
-      longitude: location.longitude
-    });
-
+    // 버스 위치는 백엔드에서 정상적으로 처리하므로 swap하지 않음
     const locationMessage = {
       type: WS_MESSAGE_TYPES.LOCATION_UPDATE,
       busNumber: this.busNumber,
       organizationId: this.organizationId,
-      latitude: backendLocation.latitude,
-      longitude: backendLocation.longitude,
+      latitude: location.latitude,
+      longitude: location.longitude,
       occupiedSeats: occupiedSeats,
       timestamp: Date.now()
     };
+
+    console.log('[DriverWebSocket] 버스 위치 전송:', {
+      latitude: location.latitude,
+      longitude: location.longitude
+    });
 
     this.sendMessage(locationMessage);
   }
@@ -203,7 +203,7 @@ class DriverWebSocketService {
    */
   startHeartbeat() {
     this.stopHeartbeat(); // 기존 하트비트 정리
-    
+
     this.heartbeatInterval = setInterval(() => {
       if (this.isConnected) {
         this.sendMessage({ type: WS_MESSAGE_TYPES.HEARTBEAT });
@@ -226,7 +226,7 @@ class DriverWebSocketService {
    */
   startLocationUpdates() {
     this.stopLocationUpdates(); // 기존 업데이트 정리
-    
+
     // 설정된 간격마다 위치 전송
     this.locationUpdateInterval = setInterval(() => {
       if (this.currentLocation && this.isConnected) {
@@ -270,12 +270,12 @@ class DriverWebSocketService {
     const baseDelay = WS_CONFIG.reconnect.delay;
     const multiplier = WS_CONFIG.reconnect.backoffMultiplier;
     const maxDelay = WS_CONFIG.reconnect.maxDelay;
-    
+
     // 지수 백오프 적용
     const delay = Math.min(baseDelay * Math.pow(multiplier, this.reconnectAttempts - 1), maxDelay);
-    
-    console.log(`[DriverWebSocket] ${delay/1000}초 후 재연결 시도 (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-    
+
+    console.log(`[DriverWebSocket] ${delay / 1000}초 후 재연결 시도 (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+
     setTimeout(() => {
       if (!this.isConnected && this.busNumber && this.organizationId) {
         this.connect(this.busNumber, this.organizationId, this.operationId);
@@ -303,7 +303,7 @@ class DriverWebSocketService {
   setupAppStateListener() {
     this.appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
       console.log('[DriverWebSocket] 앱 상태 변경:', nextAppState);
-      
+
       if (nextAppState === 'active') {
         // 포그라운드로 전환시 재연결
         if (!this.isConnected && this.busNumber) {
@@ -321,23 +321,23 @@ class DriverWebSocketService {
    */
   disconnect() {
     console.log('[DriverWebSocket] 연결 해제');
-    
+
     // 정리 작업
     this.stopHeartbeat();
     this.stopLocationUpdates();
-    
+
     // AppState 리스너 제거
     if (this.appStateSubscription) {
       this.appStateSubscription.remove();
       this.appStateSubscription = null;
     }
-    
+
     // WebSocket 닫기
     if (this.ws) {
       this.ws.close();
       this.ws = null;
     }
-    
+
     // 상태 초기화
     this.isConnected = false;
     this.reconnectAttempts = 0;
