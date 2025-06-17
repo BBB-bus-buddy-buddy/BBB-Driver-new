@@ -36,17 +36,20 @@ export const WS_CONFIG = {
   // 하트비트 설정
   heartbeat: {
     enabled: true,
-    interval: 30000, // 30초
-    timeout: 60000   // 60초 (응답 대기 시간)
+    interval: 20000, // 30초에서 20초로 단축
+    timeout: 40000   // 60초에서 40초로 단축 (응답 대기 시간)
   },
 
-  // 위치 업데이트 설정
+  // 위치 업데이트 설정 - 승객 탑승 감지 개선을 위해 조정
   locationUpdate: {
-    interval: 5000,  // 5초
-    minDistance: 5,  // 최소 이동 거리 (미터)
+    interval: 2000,  // 5초에서 2초로 단축 (더 빈번한 위치 전송)
+    minDistance: 3,  // 최소 이동 거리를 5미터에서 3미터로 단축
     highAccuracy: true,
     // 정류장 근처 감지 반경
     stationRadius: 50, // 50미터
+    // 승객 탑승 감지를 위한 추가 설정
+    passengerDetectionRadius: 30, // 30미터 이내에서 감지
+    slowSpeedThreshold: 10, // 시속 10km 이하일 때 탑승 가능으로 간주
   },
 
   // 메시지 큐 설정

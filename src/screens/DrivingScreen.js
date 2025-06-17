@@ -124,10 +124,11 @@ const DrivingScreen = ({ navigation, route }) => {
     return () => clearInterval(timer);
   }, [drive.actualStart, drive.scheduledStart]);
 
-  // WebSocket 연결 및 위치 추적
+  // WebSocket 연결 및 위치 추적 - 개선된 버전
   useEffect(() => {
     let watchId = null;
     let isWebSocketConnected = false;
+    let locationUpdateCount = 0;
 
     const initializeWebSocket = async () => {
       try {
@@ -163,20 +164,28 @@ const DrivingScreen = ({ navigation, route }) => {
         // 운행 시작 상태 전송
         driverWebSocketService.sendBusStatusUpdate('IN_OPERATION');
 
+        // 초기 승객 수 설정
+        driverWebSocketService.updateOccupiedSeats(drivingInfo.occupiedSeats);
+
       } catch (error) {
         console.error('[DrivingScreen] WebSocket 연결 실패:', error);
         Alert.alert('연결 오류', 'WebSocket 연결에 실패했습니다. 운행은 계속됩니다.');
       }
     };
 
-    // 위치 추적 시작
+    // 위치 추적 시작 - 개선된 버전
     const startTracking = () => {
+
+      // 개선된 위치 추적 옵션
       watchId = startLocationTracking((location) => {
-        console.log('[DrivingScreen] GPS 위치 업데이트:', {
+        locationUpdateCount++;
+
+        console.log('[DrivingScreen] GPS 위치 업데이트 #' + locationUpdateCount, {
           latitude: location.latitude,
           longitude: location.longitude,
           speed: location.speed,
           accuracy: location.accuracy,
+          isLastKnown: location.isLastKnown,
           timestamp: new Date(location.timestamp).toLocaleTimeString()
         });
 
@@ -195,7 +204,7 @@ const DrivingScreen = ({ navigation, route }) => {
           initializeWebSocket();
         }
 
-        // 속도 정보 업데이트
+        // 속도 정보 업데이트 및 이동 거리 계산
         if (location.speed !== null && location.speed !== undefined) {
           const speedKmh = location.speed * 3.6; // m/s를 km/h로 변환
           speedHistory.current.push(speedKmh);
@@ -208,11 +217,31 @@ const DrivingScreen = ({ navigation, route }) => {
           // 평균 속도 계산
           const avgSpeed = speedHistory.current.reduce((a, b) => a + b, 0) / speedHistory.current.length;
 
-          setDrivingInfo(prev => ({
-            ...prev,
-            currentSpeed: Math.round(speedKmh),
-            averageSpeed: Math.round(avgSpeed),
-          }));
+          // 이동 거리 추가 (대략적인 계산)
+          if (currentLocationInfo && !location.isLastKnown) {
+            const distance = calculateDistance(
+              currentLocationInfo.latitude,
+              currentLocationInfo.longitude,
+              location.latitude,
+              location.longitude
+            );
+
+            // 비정상적인 거리는 무시 (GPS 점프)
+            if (distance < 1) { // 1km 미만인 경우만
+              setDrivingInfo(prev => ({
+                ...prev,
+                totalDistance: prev.totalDistance + distance * 1000, // 미터로 저장
+                currentSpeed: Math.round(speedKmh),
+                averageSpeed: Math.round(avgSpeed),
+              }));
+            }
+          } else {
+            setDrivingInfo(prev => ({
+              ...prev,
+              currentSpeed: Math.round(speedKmh),
+              averageSpeed: Math.round(avgSpeed),
+            }));
+          }
         }
 
         // WebSocket으로 위치 전송 (브로드캐스트)
@@ -220,13 +249,17 @@ const DrivingScreen = ({ navigation, route }) => {
           // 현재 위치 업데이트
           driverWebSocketService.updateCurrentLocation(location);
 
-          // 위치와 좌석 정보 전송
-          driverWebSocketService.sendLocationUpdate(location, drivingInfo.occupiedSeats);
+          // 승객 수가 변경되었으면 즉시 업데이트
+          driverWebSocketService.updateOccupiedSeats(drivingInfo.occupiedSeats);
+        } else if (isWebSocketConnected) {
+          // 연결이 끊어진 경우 재연결 시도
+          console.log('[DrivingScreen] WebSocket 연결 끊김 - 재연결 시도');
+          setWsConnected(false);
+          initializeWebSocket();
         }
 
-        // 목적지 근접 여부 확인
+        // 목적지 근접 여부 확인 (기존 로직 유지)
         if (drive.endLocation?.latitude && drive.endLocation?.longitude) {
-          // 디버깅: 좌표 확인
           debugLocationSwap(location, drive.endLocation, '목적지 거리 계산');
 
           const distance = calculateDistance(
@@ -252,6 +285,14 @@ const DrivingScreen = ({ navigation, route }) => {
             estimatedTime: estimatedTime,
           });
         }
+      }, {
+        // 개선된 추적 옵션
+        enableHighAccuracy: true,
+        distanceFilter: 3,        // 3미터 이상 이동시 업데이트
+        interval: 2000,           // 2초마다 위치 확인
+        fastestInterval: 1000,    // 최소 1초 간격
+        showLocationDialog: true,
+        forceRequestLocation: true
       });
 
       setLocationTrackingId(watchId);
@@ -262,6 +303,20 @@ const DrivingScreen = ({ navigation, route }) => {
 
     // 앱 상태 리스너
     const appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
+
+    // 정기적으로 연결 상태 확인 (5초마다)
+    const connectionCheckInterval = setInterval(() => {
+      if (driverWebSocketService.checkConnection()) {
+        if (!wsConnected) {
+          setWsConnected(true);
+        }
+      } else {
+        if (wsConnected) {
+          setWsConnected(false);
+          console.log('[DrivingScreen] WebSocket 연결 끊김 감지');
+        }
+      }
+    }, 5000);
 
     return () => {
       // WebSocket 연결 해제
@@ -274,20 +329,53 @@ const DrivingScreen = ({ navigation, route }) => {
       if (watchId) {
         stopLocationTracking(watchId);
       }
+
+      // 인터벌 정리
+      clearInterval(connectionCheckInterval);
+
       appStateSubscription.remove();
     };
   }, []);
-  // WebSocket 메시지 핸들러들
+
+
+  // WebSocket 메시지 핸들러들 - 개선된 버전
   const handleBusUpdate = (message) => {
     console.log('[DrivingScreen] 버스 상태 업데이트:', message);
 
     if (message.data) {
       // 승객 수 업데이트
       if (message.data.occupiedSeats !== undefined) {
-        setDrivingInfo(prev => ({
-          ...prev,
-          occupiedSeats: message.data.occupiedSeats,
-        }));
+        setDrivingInfo(prev => {
+          const newOccupiedSeats = message.data.occupiedSeats;
+
+          // 탑승/하차 카운트 업데이트
+          if (newOccupiedSeats > prev.occupiedSeats) {
+            // 탑승
+            const boardedCount = newOccupiedSeats - prev.occupiedSeats;
+            return {
+              ...prev,
+              occupiedSeats: newOccupiedSeats,
+              boardedCount: prev.boardedCount + boardedCount,
+              totalPassengers: prev.totalPassengers + boardedCount,
+            };
+          } else if (newOccupiedSeats < prev.occupiedSeats) {
+            // 하차
+            const alightedCount = prev.occupiedSeats - newOccupiedSeats;
+            return {
+              ...prev,
+              occupiedSeats: newOccupiedSeats,
+              alightedCount: prev.alightedCount + alightedCount,
+            };
+          }
+
+          return {
+            ...prev,
+            occupiedSeats: newOccupiedSeats,
+          };
+        });
+
+        // WebSocket 서비스에도 업데이트
+        driverWebSocketService.updateOccupiedSeats(message.data.occupiedSeats);
       }
     }
   };
@@ -320,21 +408,39 @@ const DrivingScreen = ({ navigation, route }) => {
     const { action, userId, passengerInfo } = message.data || message;
 
     if (action === 'BOARD' || action === 'board') {
-      setDrivingInfo(prev => ({
-        ...prev,
-        occupiedSeats: prev.occupiedSeats + 1,
-        boardedCount: prev.boardedCount + 1,
-        totalPassengers: prev.totalPassengers + 1,
-      }));
+      setDrivingInfo(prev => {
+        const newState = {
+          ...prev,
+          occupiedSeats: prev.occupiedSeats + 1,
+          boardedCount: prev.boardedCount + 1,
+          totalPassengers: prev.totalPassengers + 1,
+        };
+
+        // WebSocket 서비스에 즉시 업데이트
+        driverWebSocketService.updateOccupiedSeats(newState.occupiedSeats);
+
+        return newState;
+      });
 
       // 탑승 알림
       showPassengerNotification('탑승', passengerInfo);
+
+      // 진동 피드백 (선택적)
+      // Vibration.vibrate(100);
+
     } else if (action === 'ALIGHT' || action === 'alight') {
-      setDrivingInfo(prev => ({
-        ...prev,
-        occupiedSeats: Math.max(0, prev.occupiedSeats - 1),
-        alightedCount: prev.alightedCount + 1,
-      }));
+      setDrivingInfo(prev => {
+        const newState = {
+          ...prev,
+          occupiedSeats: Math.max(0, prev.occupiedSeats - 1),
+          alightedCount: prev.alightedCount + 1,
+        };
+
+        // WebSocket 서비스에 즉시 업데이트
+        driverWebSocketService.updateOccupiedSeats(newState.occupiedSeats);
+
+        return newState;
+      });
 
       // 하차 알림
       showPassengerNotification('하차', passengerInfo);
@@ -343,8 +449,15 @@ const DrivingScreen = ({ navigation, route }) => {
 
   // 승객 알림 표시
   const showPassengerNotification = (type, passengerInfo) => {
-    // 실제 앱에서는 토스트 메시지나 알림으로 구현
     console.log(`[DrivingScreen] 승객 ${type}:`, passengerInfo);
+
+    Toast.show({
+      type: 'success',
+      text1: `승객 ${type}`,
+      text2: passengerInfo?.name || '승객 1명',
+      position: 'top',
+      visibilityTime: 2000,
+    });
   };
 
   // 앱 상태 변경 처리
