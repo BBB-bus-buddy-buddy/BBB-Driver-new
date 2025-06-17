@@ -1,4 +1,4 @@
-// src/screens/StartDriveScreen.js (KST 시간 적용 부분)
+// src/screens/StartDriveScreen.js
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -7,7 +7,8 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  Image,
+  ScrollView,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONT_SIZE, FONT_WEIGHT, BORDER_RADIUS, SHADOWS, SPACING } from '../constants/theme';
@@ -19,28 +20,61 @@ import {
 import driverWebSocketService from '../services/driverWebSocketService';
 import { storage } from '../utils/storage';
 import WebSocketStatus from '../components/WebSocketStatus';
-import { createKSTDate, toKSTISOString } from '../utils/kstTimeUtils';
+import { createKSTDate, toKSTISOString, getMinutesFromNowKST } from '../utils/kstTimeUtils';
+
+// 간단한 아이콘 컴포넌트
+const SimpleIcon = ({ name, size = 24, color = COLORS.primary, style }) => {
+  const icons = {
+    'arrow-back': '←',
+    'check-circle': '✓',
+    'radio-button-unchecked': '○',
+    'location-on': '📍',
+    'flag': '🚩',
+    'refresh': '↻',
+    'directions-bus': '🚌',
+    'schedule': '⏰',
+  };
+
+  return (
+    <Text style={[{ fontSize: size, color }, style]}>
+      {icons[name] || '•'}
+    </Text>
+  );
+};
 
 const StartDriveScreen = ({ navigation, route }) => {
-  // route.params가 없거나 drive가 없는 경우 처리
   const drive = route?.params?.drive;
 
+  // 상태 관리
   const [loading, setLoading] = useState(false);
   const [checkingLocation, setCheckingLocation] = useState(true);
   const [locationConfirmed, setLocationConfirmed] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [locationError, setLocationError] = useState(null);
-  const [wsPreConnected, setWsPreConnected] = useState(false);
+  const [wsConnected, setWsConnected] = useState(false);
   const [distanceToStart, setDistanceToStart] = useState(null);
   const [locationPermissionGranted, setLocationPermissionGranted] = useState(false);
   const [noStartLocationInfo, setNoStartLocationInfo] = useState(false);
   const [noEndLocationInfo, setNoEndLocationInfo] = useState(false);
+  
+  // 체크리스트 상태
+  const [checklist, setChecklist] = useState({
+    locationPermission: false,
+    gpsEnabled: false,
+    nearStartLocation: false,
+    websocketConnected: false,
+    timeCheck: false,
+  });
+  
+  // 조기 출발 모달
+  const [showEarlyStartModal, setShowEarlyStartModal] = useState(false);
+  const [earlyStartMinutes, setEarlyStartMinutes] = useState(0);
 
   // 허용 반경 (미터)
-  const ARRIVAL_THRESHOLD_METERS = 100; // 백엔드는 50m이지만 프론트엔드는 좀 더 넉넉하게
+  const ARRIVAL_THRESHOLD_METERS = 100;
+  const EARLY_START_ALLOWED_MINUTES = 10;
 
   useEffect(() => {
-    // drive 객체 유효성 검증
     if (!drive) {
       Alert.alert(
         '오류',
@@ -50,13 +84,8 @@ const StartDriveScreen = ({ navigation, route }) => {
       return;
     }
 
-    // drive 객체 내용 로그
-    console.log('[StartDriveScreen] drive 객체:', JSON.stringify(drive, null, 2));
-
-    // 필수 정보 검증
     const busNumber = drive.busNumber || drive.busRealNumber;
     if (!busNumber) {
-      console.error('[StartDriveScreen] busNumber is missing:', drive);
       Alert.alert(
         '오류',
         '버스 정보가 올바르지 않습니다.',
@@ -65,9 +94,7 @@ const StartDriveScreen = ({ navigation, route }) => {
       return;
     }
 
-    // operationId 검증
     if (!drive.operationId && !drive.id) {
-      console.error('[StartDriveScreen] operationId is missing:', drive);
       Alert.alert(
         '오류',
         '운행 ID가 올바르지 않습니다.',
@@ -76,13 +103,42 @@ const StartDriveScreen = ({ navigation, route }) => {
       return;
     }
 
-    // 출발지/도착지 정보 확인
     setNoStartLocationInfo(!drive.startLocation || (!drive.startLocation.latitude || !drive.startLocation.longitude));
     setNoEndLocationInfo(!drive.endLocation || (!drive.endLocation.latitude || !drive.endLocation.longitude));
 
-    checkLocationAndPermission();
-    preConnectWebSocket();
+    performStartupChecks();
   }, [drive]);
+
+  // 시작 시 모든 체크 수행
+  const performStartupChecks = async () => {
+    await checkLocationAndPermission();
+    await checkDepartureTime();
+    await preConnectWebSocket();
+  };
+
+  // 출발 시간 체크
+  const checkDepartureTime = () => {
+    const timeStr = drive.startTime || drive.departureTime?.split(' ').pop();
+    if (timeStr && drive.operationDate) {
+      const minutesFromNow = getMinutesFromNowKST(drive.operationDate, timeStr);
+      
+      if (minutesFromNow <= 0) {
+        // 이미 출발 시간이 지남
+        setChecklist(prev => ({ ...prev, timeCheck: true }));
+      } else if (minutesFromNow <= EARLY_START_ALLOWED_MINUTES) {
+        // 조기 출발 가능 시간
+        setChecklist(prev => ({ ...prev, timeCheck: true }));
+        setEarlyStartMinutes(minutesFromNow);
+      } else {
+        // 아직 출발 시간이 아님
+        setChecklist(prev => ({ ...prev, timeCheck: false }));
+        setEarlyStartMinutes(minutesFromNow);
+      }
+    } else {
+      // 시간 정보가 없으면 체크 패스
+      setChecklist(prev => ({ ...prev, timeCheck: true }));
+    }
+  };
 
   // WebSocket 사전 연결
   const preConnectWebSocket = async () => {
@@ -107,10 +163,12 @@ const StartDriveScreen = ({ navigation, route }) => {
         drive.operationId || drive.id
       );
 
-      setWsPreConnected(true);
+      setWsConnected(true);
+      setChecklist(prev => ({ ...prev, websocketConnected: true }));
       console.log('[StartDriveScreen] WebSocket 사전 연결 성공');
     } catch (error) {
       console.error('[StartDriveScreen] WebSocket 사전 연결 실패:', error);
+      setChecklist(prev => ({ ...prev, websocketConnected: false }));
     }
   };
 
@@ -124,6 +182,7 @@ const StartDriveScreen = ({ navigation, route }) => {
 
       if (!hasPermission) {
         setLocationError('위치 권한이 필요합니다.');
+        setChecklist(prev => ({ ...prev, locationPermission: false }));
         Alert.alert(
           '위치 권한 필요',
           '운행 시작을 위해 위치 권한이 필요합니다.',
@@ -133,11 +192,13 @@ const StartDriveScreen = ({ navigation, route }) => {
       }
 
       setLocationPermissionGranted(true);
+      setChecklist(prev => ({ ...prev, locationPermission: true }));
 
       // 현재 위치 가져오기
       try {
         const location = await getCurrentLocation();
         setCurrentLocation(location);
+        setChecklist(prev => ({ ...prev, gpsEnabled: true }));
 
         // 출발지 정보가 있으면 거리 계산
         if (drive.startLocation?.latitude && drive.startLocation?.longitude) {
@@ -153,23 +214,23 @@ const StartDriveScreen = ({ navigation, route }) => {
           // 출발지 근처인지 확인
           if (distance <= ARRIVAL_THRESHOLD_METERS) {
             setLocationConfirmed(true);
+            setChecklist(prev => ({ ...prev, nearStartLocation: true }));
           } else {
             setLocationConfirmed(false);
+            setChecklist(prev => ({ ...prev, nearStartLocation: false }));
             setLocationError(`출발지까지 ${formatDistance(distance)} 남았습니다.`);
           }
         } else {
           // 출발지 정보가 없는 경우
           console.log('[StartDriveScreen] 출발지 정보 없음');
-          console.warn('[StartDriveScreen] drive.startLocation:', drive.startLocation);
-          console.warn('[StartDriveScreen] drive.endLocation:', drive.endLocation);
-          
-          // 출발지 확인 없이 운행 시작 허용
           setLocationConfirmed(true);
+          setChecklist(prev => ({ ...prev, nearStartLocation: true }));
           setLocationError(null);
         }
       } catch (locError) {
         console.error('[StartDriveScreen] 위치 조회 오류:', locError);
         setLocationError('현재 위치를 확인할 수 없습니다.');
+        setChecklist(prev => ({ ...prev, gpsEnabled: false }));
       }
 
     } catch (error) {
@@ -208,6 +269,18 @@ const StartDriveScreen = ({ navigation, route }) => {
     try {
       setLoading(true);
 
+      // 모든 체크리스트 확인
+      const allChecked = Object.values(checklist).every(check => check === true);
+      
+      if (!allChecked && !noStartLocationInfo) {
+        Alert.alert(
+          '운행 준비 확인',
+          '모든 준비사항을 확인해주세요.',
+          [{ text: '확인', onPress: () => setLoading(false) }]
+        );
+        return;
+      }
+
       // 출발지/도착지 정보가 없는 경우 경고
       if (noStartLocationInfo || noEndLocationInfo) {
         const missingInfo = [];
@@ -225,16 +298,10 @@ const StartDriveScreen = ({ navigation, route }) => {
         return;
       }
 
-      // 출발지 정보가 있고, 출발지 근처가 아닌 경우에만 경고
-      if (!noStartLocationInfo && distanceToStart !== null && distanceToStart > ARRIVAL_THRESHOLD_METERS) {
-        Alert.alert(
-          '출발지 확인',
-          `현재 출발지에서 ${formatDistance(distanceToStart)} 떨어져 있습니다. 그래도 운행을 시작하시겠습니까?`,
-          [
-            { text: '취소', style: 'cancel', onPress: () => setLoading(false) },
-            { text: '운행 시작', onPress: () => proceedWithStart() }
-          ]
-        );
+      // 조기 출발 확인
+      if (earlyStartMinutes > 0) {
+        setShowEarlyStartModal(true);
+        setLoading(false);
         return;
       }
 
@@ -246,54 +313,16 @@ const StartDriveScreen = ({ navigation, route }) => {
     }
   };
 
-  const proceedWithStart = async () => {
+  const proceedWithStart = async (isEarlyStart = false) => {
     const requestData = {
       operationId: drive.operationId || drive.id,
-      isEarlyStart: false,
+      isEarlyStart: isEarlyStart,
       currentLocation: currentLocation ? {
         latitude: currentLocation.latitude,
         longitude: currentLocation.longitude,
         timestamp: Date.now()
       } : null
     };
-
-    // 출발 시간 확인 - KST 기준
-    const now = new Date();
-    let scheduledStart;
-
-    const timeStr = drive.startTime || drive.departureTime?.split(' ').pop();
-    if (timeStr && drive.operationDate) {
-      scheduledStart = createKSTDate(drive.operationDate, timeStr);
-    } else if (drive.scheduledStart) {
-      scheduledStart = new Date(drive.scheduledStart);
-    } else {
-      scheduledStart = now;
-    }
-
-    const timeDiff = (scheduledStart - now) / (1000 * 60); // 분 단위
-
-    // 예정 시간보다 이른 경우 조기 출발 확인 (시간 제한 없음)
-    if (timeDiff > 0) {
-      const hours = Math.floor(timeDiff / 60);
-      const minutes = Math.ceil(timeDiff % 60);
-      const timeText = hours > 0 ? `${hours}시간 ${minutes}분` : `${minutes}분`;
-      
-      Alert.alert(
-        '조기 출발',
-        `예정 출발 시간까지 ${timeText} 남았습니다. 조기 출발하시겠습니까?`,
-        [
-          { text: '취소', style: 'cancel', onPress: () => setLoading(false) },
-          {
-            text: '조기 출발',
-            onPress: async () => {
-              requestData.isEarlyStart = true;
-              await startDriveRequest(requestData);
-            }
-          }
-        ]
-      );
-      return;
-    }
 
     await startDriveRequest(requestData);
   };
@@ -333,11 +362,11 @@ const StartDriveScreen = ({ navigation, route }) => {
   };
 
   const handleRefreshLocation = () => {
-    checkLocationAndPermission();
+    performStartupChecks();
   };
 
   const handleGoBack = () => {
-    if (wsPreConnected) {
+    if (wsConnected) {
       driverWebSocketService.disconnect();
     }
     navigation.goBack();
@@ -347,35 +376,42 @@ const StartDriveScreen = ({ navigation, route }) => {
     return drive?.busNumber || drive?.busRealNumber || 'BUS-UNKNOWN';
   };
 
-  // 운행 시작 버튼 활성화 조건 수정
-  const canStart = locationPermissionGranted && !checkingLocation && !loading;
+  // 체크리스트 아이템 렌더링
+  const renderChecklistItem = (title, checked, description) => (
+    <View style={styles.checklistItem}>
+      <SimpleIcon 
+        name={checked ? 'check-circle' : 'radio-button-unchecked'} 
+        size={24} 
+        color={checked ? COLORS.success : COLORS.grey} 
+      />
+      <View style={styles.checklistTextContainer}>
+        <Text style={[styles.checklistTitle, checked && styles.checklistTitleChecked]}>
+          {title}
+        </Text>
+        {description && (
+          <Text style={styles.checklistDescription}>{description}</Text>
+        )}
+      </View>
+    </View>
+  );
 
-  const formatDepartureTime = () => {
-    if (drive.startTime && drive.operationDate) {
-      return `${drive.operationDate} ${drive.startTime}`;
-    }
-    return drive.departureTime || '시간 정보 없음';
-  };
-
-  const formatArrivalTime = () => {
-    if (drive.endTime && drive.operationDate) {
-      return drive.endTime;
-    }
-    return drive.arrivalTime?.split(' ').pop() || '시간 정보 없음';
-  };
+  // 운행 시작 버튼 활성화 조건
+  const canStart = !checkingLocation && !loading && 
+    (Object.values(checklist).every(check => check === true) || noStartLocationInfo);
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
+      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
-            <Text style={styles.backButtonText}>← 뒤로</Text>
+            <SimpleIcon name="arrow-back" size={24} color={COLORS.primary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>운행 준비</Text>
-          {wsPreConnected && <WebSocketStatus />}
+          {wsConnected && <WebSocketStatus />}
         </View>
 
         <View style={styles.content}>
+          {/* 버스 정보 카드 */}
           <View style={styles.driveInfoCard}>
             <Text style={styles.busNumber}>{getBusNumber()}</Text>
             <View style={styles.routeInfo}>
@@ -396,78 +432,54 @@ const StartDriveScreen = ({ navigation, route }) => {
                 </Text>
               </View>
             </View>
-            {drive.driverName && (
-              <View style={styles.driverInfo}>
-                <Text style={styles.driverLabel}>운전자</Text>
-                <Text style={styles.driverName}>{drive.driverName}</Text>
-              </View>
-            )}
           </View>
 
-          <View style={styles.locationCheckCard}>
-            <Text style={styles.locationCheckTitle}>
-              출발 준비 확인
-            </Text>
-
-            {checkingLocation ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={COLORS.primary} />
-                <Text style={styles.loadingText}>
-                  현재 위치를 확인하고 있습니다...
-                </Text>
-              </View>
-            ) : locationError ? (
-              <View style={styles.errorContainer}>
-                <Text style={styles.errorText}>{locationError}</Text>
-                {locationError !== '출발지 정보를 확인할 수 없습니다.' && (
-                  <TouchableOpacity
-                    style={styles.retryButton}
-                    onPress={handleRefreshLocation}
-                  >
-                    <Text style={styles.retryButtonText}>다시 시도</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            ) : noStartLocationInfo ? (
-              <View style={styles.warningContainer}>
-                <Text style={styles.warningText}>
-                  ⚠️ 출발지 정보를 확인할 수 없습니다
-                </Text>
-                <Text style={styles.warningSubText}>
-                  위치 확인 없이 운행을 시작할 수 있습니다
-                </Text>
-              </View>
-            ) : locationConfirmed ? (
-              <View style={styles.confirmedContainer}>
-                <Text style={styles.confirmedText}>
-                  ✓ 출발지 도착 확인 완료
-                </Text>
-                {distanceToStart !== null && distanceToStart <= ARRIVAL_THRESHOLD_METERS && (
-                  <Text style={styles.locationInstruction}>
-                    출발지에서 {formatDistance(distanceToStart)} 이내에 있습니다.
-                  </Text>
-                )}
-              </View>
-            ) : distanceToStart !== null ? (
-              <View style={styles.distanceContainer}>
-                <Text style={styles.distanceText}>
-                  출발지까지 거리
-                </Text>
-                <Text style={styles.distanceValue}>
-                  {formatDistance(distanceToStart)}
-                </Text>
-                <Text style={styles.distanceWarning}>
-                  출발지 {ARRIVAL_THRESHOLD_METERS}m 이내로 이동해주세요
-                </Text>
-              </View>
-            ) : null}
+          {/* 운행 준비 체크리스트 */}
+          <View style={styles.checklistCard}>
+            <Text style={styles.checklistHeader}>운행 준비 체크리스트</Text>
+            
+            {renderChecklistItem(
+              '위치 권한',
+              checklist.locationPermission,
+              checklist.locationPermission ? '허용됨' : '위치 권한이 필요합니다'
+            )}
+            
+            {renderChecklistItem(
+              'GPS 상태',
+              checklist.gpsEnabled,
+              checklist.gpsEnabled ? '활성화됨' : 'GPS를 켜주세요'
+            )}
+            
+            {renderChecklistItem(
+              '출발지 확인',
+              checklist.nearStartLocation || noStartLocationInfo,
+              noStartLocationInfo ? '출발지 정보 없음' :
+              checklist.nearStartLocation ? '출발지 도착' :
+              distanceToStart ? `${formatDistance(distanceToStart)} 남음` : '확인 중...'
+            )}
+            
+            {renderChecklistItem(
+              '실시간 통신',
+              checklist.websocketConnected,
+              checklist.websocketConnected ? '연결됨' : '연결 중...'
+            )}
+            
+            {renderChecklistItem(
+              '출발 시간',
+              checklist.timeCheck,
+              checklist.timeCheck ? 
+                (earlyStartMinutes > 0 ? `${earlyStartMinutes}분 후 출발` : '출발 가능') :
+                `${earlyStartMinutes}분 후 출발 가능`
+            )}
           </View>
 
           {/* 위치 정보 카드 */}
           <View style={styles.locationInfoCard}>
-            {/* 출발지 정보 */}
             <View style={styles.locationSection}>
-              <Text style={styles.locationInfoTitle}>출발지</Text>
+              <View style={styles.locationHeader}>
+                <SimpleIcon name="location-on" size={20} color={COLORS.primary} />
+                <Text style={styles.locationInfoTitle}>출발지</Text>
+              </View>
               {noStartLocationInfo ? (
                 <Text style={styles.noLocationText}>출발지 정보를 확인할 수 없습니다</Text>
               ) : (
@@ -484,9 +496,11 @@ const StartDriveScreen = ({ navigation, route }) => {
               )}
             </View>
 
-            {/* 도착지 정보 */}
             <View style={[styles.locationSection, styles.locationSectionBorder]}>
-              <Text style={styles.locationInfoTitle}>도착지</Text>
+              <View style={styles.locationHeader}>
+                <SimpleIcon name="flag" size={20} color={COLORS.primary} />
+                <Text style={styles.locationInfoTitle}>도착지</Text>
+              </View>
               {noEndLocationInfo ? (
                 <Text style={styles.noLocationText}>도착지 정보를 확인할 수 없습니다</Text>
               ) : (
@@ -497,31 +511,75 @@ const StartDriveScreen = ({ navigation, route }) => {
             </View>
           </View>
 
-          {wsPreConnected && (
-            <View style={styles.wsStatusCard}>
-              <View style={styles.wsStatusIcon} />
-              <Text style={styles.wsStatusText}>실시간 통신 준비 완료</Text>
-            </View>
+          {/* 새로고침 버튼 */}
+          {locationError && (
+            <TouchableOpacity style={styles.refreshButton} onPress={handleRefreshLocation}>
+              <SimpleIcon name="refresh" size={20} color={COLORS.primary} />
+              <Text style={styles.refreshButtonText}>다시 확인</Text>
+            </TouchableOpacity>
           )}
         </View>
+      </ScrollView>
 
-        <View style={styles.bottomContainer}>
-          <TouchableOpacity
-            style={[
-              styles.startButton,
-              !canStart && styles.disabledButton,
-            ]}
-            onPress={handleStartDrive}
-            disabled={!canStart}
-          >
-            {loading ? (
-              <ActivityIndicator color={COLORS.white} />
-            ) : (
+      {/* 하단 버튼 */}
+      <View style={styles.bottomContainer}>
+        <TouchableOpacity
+          style={[
+            styles.startButton,
+            !canStart && styles.disabledButton,
+          ]}
+          onPress={handleStartDrive}
+          disabled={!canStart}
+        >
+          {loading ? (
+            <ActivityIndicator color={COLORS.white} />
+          ) : (
+            <>
+              <SimpleIcon name="directions-bus" size={24} color={COLORS.white} style={styles.buttonIcon} />
               <Text style={styles.startButtonText}>운행 시작</Text>
-            )}
-          </TouchableOpacity>
-        </View>
+            </>
+          )}
+        </TouchableOpacity>
       </View>
+
+      {/* 조기 출발 모달 */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={showEarlyStartModal}
+        onRequestClose={() => setShowEarlyStartModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <SimpleIcon name="schedule" size={48} color={COLORS.warning} style={styles.modalIcon} />
+            <Text style={styles.modalTitle}>조기 출발</Text>
+            <Text style={styles.modalMessage}>
+              예정 출발 시간까지 {earlyStartMinutes}분 남았습니다.{'\n'}
+              지금 출발하시겠습니까?
+            </Text>
+            <View style={styles.modalButtonContainer}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalCancelButton]}
+                onPress={() => {
+                  setShowEarlyStartModal(false);
+                  setLoading(false);
+                }}
+              >
+                <Text style={styles.modalCancelButtonText}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalConfirmButton]}
+                onPress={async () => {
+                  setShowEarlyStartModal(false);
+                  await proceedWithStart(true);
+                }}
+              >
+                <Text style={styles.modalConfirmButtonText}>조기 출발</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -533,33 +591,27 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    padding: SPACING.lg,
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: SPACING.lg,
+    padding: SPACING.lg,
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
   backButton: {
     padding: SPACING.xs,
-  },
-  backButtonText: {
-    fontSize: FONT_SIZE.md,
-    color: COLORS.primary,
   },
   headerTitle: {
     fontSize: FONT_SIZE.lg,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.black,
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    textAlign: 'center',
-    zIndex: -1,
+    marginLeft: SPACING.md,
+    flex: 1,
   },
   content: {
-    flex: 1,
+    padding: SPACING.lg,
   },
   driveInfoCard: {
     backgroundColor: COLORS.white,
@@ -611,120 +663,40 @@ const styles = StyleSheet.create({
     color: COLORS.black,
     fontWeight: FONT_WEIGHT.medium,
   },
-  driverInfo: {
-    marginTop: SPACING.md,
-    paddingTop: SPACING.md,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-  },
-  driverLabel: {
-    fontSize: FONT_SIZE.xs,
-    color: COLORS.grey,
-    marginBottom: SPACING.xs,
-  },
-  driverName: {
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.black,
-    fontWeight: FONT_WEIGHT.medium,
-  },
-  locationCheckCard: {
+  checklistCard: {
     backgroundColor: COLORS.white,
     borderRadius: BORDER_RADIUS.md,
     padding: SPACING.lg,
     marginBottom: SPACING.lg,
     ...SHADOWS.small,
   },
-  locationCheckTitle: {
+  checklistHeader: {
     fontSize: FONT_SIZE.lg,
     fontWeight: FONT_WEIGHT.bold,
     color: COLORS.black,
-    marginBottom: SPACING.md,
-    textAlign: 'center',
+    marginBottom: SPACING.lg,
   },
-  loadingContainer: {
+  checklistItem: {
+    flexDirection: 'row',
     alignItems: 'center',
-    padding: SPACING.lg,
-  },
-  loadingText: {
-    marginTop: SPACING.md,
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.grey,
-    textAlign: 'center',
-  },
-  errorContainer: {
-    alignItems: 'center',
-    padding: SPACING.sm,
-  },
-  confirmedContainer: {
-    alignItems: 'center',
-    padding: SPACING.sm,
-  },
-  confirmedText: {
-    fontSize: FONT_SIZE.md,
-    color: COLORS.success,
-    textAlign: 'center',
-    lineHeight: 22,
-    fontWeight: FONT_WEIGHT.semiBold,
-  },
-  locationInstruction: {
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.grey,
-    textAlign: 'center',
-    marginTop: SPACING.xs,
-  },
-  errorText: {
-    fontSize: FONT_SIZE.md,
-    color: COLORS.error,
-    textAlign: 'center',
-    lineHeight: 22,
     marginBottom: SPACING.md,
   },
-  retryButton: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.sm,
+  checklistTextContainer: {
+    marginLeft: SPACING.md,
+    flex: 1,
   },
-  retryButtonText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZE.sm,
+  checklistTitle: {
+    fontSize: FONT_SIZE.md,
+    color: COLORS.grey,
     fontWeight: FONT_WEIGHT.medium,
   },
-  warningContainer: {
-    alignItems: 'center',
-    padding: SPACING.sm,
+  checklistTitleChecked: {
+    color: COLORS.black,
   },
-  warningText: {
-    fontSize: FONT_SIZE.md,
-    color: COLORS.warning,
-    textAlign: 'center',
-    fontWeight: FONT_WEIGHT.semiBold,
-    marginBottom: SPACING.xs,
-  },
-  warningSubText: {
+  checklistDescription: {
     fontSize: FONT_SIZE.sm,
     color: COLORS.grey,
-    textAlign: 'center',
-  },
-  distanceContainer: {
-    alignItems: 'center',
-    padding: SPACING.md,
-  },
-  distanceText: {
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.grey,
-    marginBottom: SPACING.xs,
-  },
-  distanceValue: {
-    fontSize: FONT_SIZE.xl,
-    color: COLORS.warning,
-    fontWeight: FONT_WEIGHT.bold,
-    marginBottom: SPACING.sm,
-  },
-  distanceWarning: {
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.warning,
-    textAlign: 'center',
+    marginTop: SPACING.xs,
   },
   locationInfoCard: {
     backgroundColor: COLORS.white,
@@ -742,63 +714,130 @@ const styles = StyleSheet.create({
     borderTopColor: COLORS.border,
     marginBottom: 0,
   },
+  locationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+  },
   locationInfoTitle: {
     fontSize: FONT_SIZE.sm,
     color: COLORS.grey,
-    marginBottom: SPACING.xs,
+    marginLeft: SPACING.xs,
     fontWeight: FONT_WEIGHT.medium,
   },
   locationInfoText: {
     fontSize: FONT_SIZE.md,
     color: COLORS.black,
     fontWeight: FONT_WEIGHT.medium,
+    marginLeft: 28,
   },
   noLocationText: {
     fontSize: FONT_SIZE.sm,
     color: COLORS.warning,
     fontStyle: 'italic',
+    marginLeft: 28,
   },
   distanceInfoText: {
     fontSize: FONT_SIZE.sm,
     color: COLORS.primary,
     marginTop: SPACING.xs,
+    marginLeft: 28,
   },
-  wsStatusCard: {
-    backgroundColor: COLORS.success + '20',
-    borderRadius: BORDER_RADIUS.sm,
-    padding: SPACING.md,
+  refreshButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.sm,
+    padding: SPACING.md,
+    ...SHADOWS.small,
   },
-  wsStatusIcon: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.success,
-    marginRight: SPACING.xs,
-  },
-  wsStatusText: {
+  refreshButtonText: {
     fontSize: FONT_SIZE.sm,
-    color: COLORS.success,
+    color: COLORS.primary,
     fontWeight: FONT_WEIGHT.medium,
+    marginLeft: SPACING.xs,
   },
   bottomContainer: {
-    padding: SPACING.md,
+    padding: SPACING.lg,
+    backgroundColor: COLORS.white,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
   },
   startButton: {
     backgroundColor: COLORS.primary,
     borderRadius: BORDER_RADIUS.sm,
     paddingVertical: SPACING.md,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
     minHeight: 50,
   },
   disabledButton: {
     backgroundColor: COLORS.extraLightGrey,
   },
+  buttonIcon: {
+    marginRight: SPACING.sm,
+  },
   startButtonText: {
     color: COLORS.white,
     fontSize: FONT_SIZE.lg,
+    fontWeight: FONT_WEIGHT.semiBold,
+  },
+  // 모달 스타일
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.xl,
+    width: '80%',
+    alignItems: 'center',
+  },
+  modalIcon: {
+    marginBottom: SPACING.md,
+  },
+  modalTitle: {
+    fontSize: FONT_SIZE.xl,
+    fontWeight: FONT_WEIGHT.bold,
+    color: COLORS.black,
+    marginBottom: SPACING.sm,
+  },
+  modalMessage: {
+    fontSize: FONT_SIZE.md,
+    color: COLORS.grey,
+    textAlign: 'center',
+    marginBottom: SPACING.xl,
+    lineHeight: 22,
+  },
+  modalButtonContainer: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.sm,
+    alignItems: 'center',
+  },
+  modalCancelButton: {
+    backgroundColor: COLORS.lightGrey,
+  },
+  modalConfirmButton: {
+    backgroundColor: COLORS.warning,
+  },
+  modalCancelButtonText: {
+    fontSize: FONT_SIZE.md,
+    color: COLORS.black,
+    fontWeight: FONT_WEIGHT.medium,
+  },
+  modalConfirmButtonText: {
+    fontSize: FONT_SIZE.md,
+    color: COLORS.white,
     fontWeight: FONT_WEIGHT.semiBold,
   },
 });
