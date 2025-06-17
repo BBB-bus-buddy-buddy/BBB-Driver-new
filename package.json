@@ -3,31 +3,33 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
+    "// ========== 개발 실행 ==========": "",
     "start": "react-native start",
-    "clean-start": "npm run clean-cache && npm start --reset-cache",
+    "clean-start": "npm run clean && npm start --reset-cache",
+    "ios": "react-native run-ios",
+    "android": "react-native run-android",
     
-    "// ========== 개발 ==========": "",
-    "dev:ios": "react-native run-ios --mode Debug",
-    "dev:android": "react-native run-android --mode debug",
+    "// ========== 빌드 ==========": "",
+    "build:ios": "cd ios && xcodebuild -workspace driver.xcworkspace -scheme driver -configuration Release clean archive -archivePath ./build/driver.xcarchive && xcodebuild -exportArchive -archivePath ./build/driver.xcarchive -exportPath ./build -exportOptionsPlist exportOptions.plist",
+    "build:android": "cd android && ./gradlew clean bundleRelease assembleRelease && cd ..",
+    "build": "npm run clean && npm run build:android && npm run build:ios",
     
-    "// ========== 프로덕션 빌드 ==========": "",
-    "prod:ios": "react-native run-ios --mode Release",
-    "prod:android": "cd android && ./gradlew assembleRelease && cd ..",
-    "prod:bundle": "cd android && ./gradlew bundleRelease && cd ..",
+    "// ========== iOS 정리 및 재설치 ==========": "",
+    "clean:ios": "cd ios && rm -rf build/ DerivedData/ Pods/ && xcodebuild clean && cd .. && rm -rf ~/Library/Developer/Xcode/DerivedData",
+    "reset:ios": "npm run clean:ios && cd ios && pod install && cd ..",
     
-    "// ========== 정리 및 재설치 ==========": "",
-    "clean": "npm run clean-android && npm run clean-ios && npm run clean-cache",
-    "clean-android": "cd android && rm -rf .gradle build app/build app/.cxx && ./gradlew clean && cd ..",
-    "clean-ios": "cd ios && rm -rf build/ DerivedData/ && xcodebuild clean && cd ..",
-    "clean-cache": "watchman watch-del-all && rm -rf $TMPDIR/react-* && rm -rf $TMPDIR/metro-* && rm -rf $TMPDIR/haste-* && rm -rf node_modules/.cache",
-    "fresh-install": "npm run clean && rm -rf node_modules ios/Pods && npm install && cd ios && pod install && cd ..",
+    "// ========== Android 정리 및 재설치 ==========": "",
+    "clean:android": "cd android && rm -rf build .gradle app/build app/.cxx .idea app/release app/debug captures .externalNativeBuild && ./gradlew clean && cd ..",
+    "reset:android": "npm run clean:android && cd android && ./gradlew wrapper && cd ..",
+    
+    "// ========== 전체 정리 및 재설치 ==========": "",
+    "clean": "npm run clean:android && npm run clean:ios && watchman watch-del-all && rm -rf node_modules/.cache $TMPDIR/metro-* $TMPDIR/react-*",
+    "reset": "npm run clean && rm -rf node_modules && npm install && npm run reset:ios && npm run reset:android",
     
     "// ========== 유틸리티 ==========": "",
-    "pod-install": "cd ios && pod install && cd ..",
-    "doctor": "react-native doctor",
-    "lint": "eslint .",
     "test": "jest",
-    "postinstall": "npx pod-install"
+    "lint": "eslint .",
+    "postinstall": "cd ios && pod install"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "1.22.0",
